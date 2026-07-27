@@ -1,0 +1,36 @@
+# Local full-stack: app + Postgres + Redis.
+# The app works without the db/cache; they're here for the optional
+# server-backed tracker, analytics, and rate limiting.
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - DATABASE_URL=postgresql://profilepilot:profilepilot@db:5432/profilepilot
+      - REDIS_URL=redis://cache:6379
+    depends_on:
+      - db
+      - cache
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=profilepilot
+      - POSTGRES_PASSWORD=profilepilot
+      - POSTGRES_DB=profilepilot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  cache:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

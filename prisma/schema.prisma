@@ -1,0 +1,56 @@
+// ProfilePilot database schema (OPTIONAL).
+//
+// The app runs fully without a database — analysis history lives in the
+// browser by default (see src/lib/history.ts). This schema powers the
+// server-backed Improvement Tracker and the admin/analytics dashboards when
+// DATABASE_URL is configured. See docs/INTEGRATIONS.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  // Clerk user id when auth is enabled; null for anonymous local usage.
+  clerkId   String?    @unique
+  email     String?    @unique
+  plan      Plan       @default(FREE)
+  createdAt DateTime   @default(now())
+  analyses  Analysis[]
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+// A stored analysis run. We persist SCORES and metadata only — never photos.
+model Analysis {
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  overallScore  Float
+  photoCount    Int
+  memorability  Int
+  // Full category + flags payload as JSON for charting and history.
+  categories    Json
+  redFlagCount  Int      @default(0)
+  greenFlagCount Int     @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Aggregated, anonymous usage counters for the analytics dashboard.
+model UsageEvent {
+  id        String   @id @default(cuid())
+  route     String
+  createdAt DateTime @default(now())
+
+  @@index([route, createdAt])
+}
