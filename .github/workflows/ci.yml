@@ -34,6 +34,42 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
+  jarvis-backend:
+    name: JARVIS backend · ruff · mypy · pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jarvis/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -e ".[stt,dev]"
+      - run: ruff check app tests
+      - run: mypy app
+      - run: pytest -q
+
+  jarvis-frontend:
+    name: JARVIS frontend · typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jarvis/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: jarvis/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
   docker:
     name: Docker image builds
     runs-on: ubuntu-latest
