@@ -96,6 +96,8 @@ async function startBackend() {
   process.env.SENTINEL_DATA_DIR = DATA;
   process.env.SENTINEL_ENV_FILE = ENV_FILE;
   process.env.SENTINEL_WEB_DIST = path.join(RES, 'web');
+  // Recordings go to the user's Videos folder, where people expect them.
+  process.env.SENTINEL_RECORDINGS_DIR = path.join(app.getPath('videos'), 'SENTINEL');
   process.env.GO2RTC_BIN = path.join(RES, 'bin', process.platform === 'win32' ? 'go2rtc.exe' : 'go2rtc');
 
   const mod = await import(pathToFileURL(path.join(RES, 'server', 'server.mjs')).href);

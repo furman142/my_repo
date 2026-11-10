@@ -23,6 +23,8 @@ export const cameraSchema = z.object({
   enabled: z.boolean().default(true),
   /** Xiaomi P2P transport: auto = camera decides (often UDP), tcp = force TCP (go2rtc `transport=tcp`). */
   transport: z.enum(['auto', 'tcp']).default('auto'),
+  /** Include this camera in continuous recording (when recording is enabled). */
+  record: z.boolean().default(true),
 });
 
 export const settingsSchema = z.object({
@@ -31,6 +33,14 @@ export const settingsSchema = z.object({
   defaultQuality: z.enum(['hd', 'sd']).default('hd'),
   /** Demo mode shows go2rtc test patterns, clearly labelled DEMO. */
   demoMode: z.boolean().default(false),
+  recording: z
+    .object({
+      enabled: z.boolean().default(false),
+      retentionDays: z.number().int().min(1).max(365).default(7),
+      maxGb: z.number().min(1).max(10_000).default(50),
+      segmentMinutes: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).default(10),
+    })
+    .default({}),
 });
 
 export type Camera = z.infer<typeof cameraSchema>;

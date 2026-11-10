@@ -1,5 +1,6 @@
 import {
   ArrowDown,
+  Circle as RecIcon,
   ArrowUp,
   CheckCircle2,
   Circle,
@@ -21,8 +22,8 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { NetDiagCard, isUdpTimeout } from '../components/NetDiagCard';
 import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
-import type { Camera, ProbeResult, Settings as SettingsT, SetupState, SystemStatus, XiaomiDevice } from '../lib/types';
-import { cn, formatBytes } from '../lib/util';
+import type { Camera, ProbeResult, RecordingStatus, Settings as SettingsT, SetupState, SystemStatus, XiaomiDevice } from '../lib/types';
+import { cn, formatBytes, formatGb } from '../lib/util';
 
 export function Settings({ status, refresh, loginRequired }: { status: SystemStatus; refresh: () => void; loginRequired: boolean }) {
   const [settings, setSettings] = useState<SettingsT | null>(null);
@@ -41,6 +42,7 @@ export function Settings({ status, refresh, loginRequired }: { status: SystemSta
         <SetupWizard onAdded={reload} />
         {settings && <CamerasEditor settings={settings} onSaved={reload} />}
         <NetDiagCard Card={Card} />
+        {settings && <RecordingCard settings={settings} onSaved={reload} />}
         {settings && <Preferences settings={settings} onSaved={reload} />}
         <SecurityCard status={status} loginRequired={loginRequired} />
       </div>
@@ -338,7 +340,7 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
     try {
       await api('/api/settings', {
         method: 'PUT',
-        json: { cameras: rows.map(({ id, name, location, enabled, transport }) => ({ id, name, location, enabled, transport })) },
+        json: { cameras: rows.map(({ id, name, location, enabled, transport, record }) => ({ id, name, location, enabled, transport, record })) },
       });
       setMsg('נשמר');
       onSaved();
@@ -410,6 +412,9 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                     <option value="auto">חיבור: אוטומטי</option>
                     <option value="tcp">חיבור: TCP (יציב ב-Wi-Fi)</option>
                   </select>
+                  <label className="flex items-center gap-1.5 text-sm text-ink-300" title="כלול את המצלמה בהקלטה הרציפה">
+                    <input type="checkbox" checked={c.record} onChange={(e) => update(i, { record: e.target.checked })} className="accent-red-500" /> מקליטה
+                  </label>
                   <label className="flex items-center gap-1.5 text-sm text-ink-300">
                     <input type="checkbox" checked={c.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} className="accent-blue-500" /> מוצגת
                   </label>
@@ -511,6 +516,123 @@ function SecurityCard({ status, loginRequired }: { status: SystemStatus; loginRe
           {status.go2rtc.managed ? ' · managed by SENTINEL' : ' · external'}
         </li>
       </ul>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------------------------------
+function RecordingCard({ settings, onSaved }: { settings: SettingsT; onSaved: () => void }) {
+  const [st, setSt] = useState<RecordingStatus | null>(null);
+  const [form, setForm] = useState(settings.recording);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => setForm(settings.recording), [settings.recording]);
+
+  const load = useCallback(async () => {
+    try {
+      setSt(await api<RecordingStatus>('/api/recordings/status'));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+    const t = window.setInterval(load, 5000);
+    return () => window.clearInterval(t);
+  }, [load]);
+
+  const save = async (patch: Partial<SettingsT['recording']>) => {
+    setMsg(null);
+    try {
+      await api('/api/settings', { method: 'PUT', json: { recording: patch } });
+      onSaved();
+      void load();
+      setMsg('נשמר');
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+  const names: Record<string, string> = { sentinel_demo_1: 'DEMO 1', sentinel_demo_2: 'DEMO 2', ...Object.fromEntries(settings.cameras.map((c) => [c.id, c.name])) };
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings.recording);
+
+  return (
+    <Card
+      title="הקלטה"
+      icon={<RecIcon className="h-4 w-4 fill-live text-live" />}
+      aside={msg ? <span className="text-xs text-ink-300">{msg}</span> : undefined}
+    >
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm text-ink-100">
+            <input type="checkbox" checked={settings.recording.enabled} onChange={(e) => save({ enabled: e.target.checked })} className="h-4 w-4 accent-red-500" />
+            הקלטה רציפה למחשב
+          </label>
+          <p className="text-xs text-ink-400">
+            מקליט כל מצלמה שמסומנת "מקליטה" ברשימת המצלמות, גם כשהחלון סגור למגש. וידאו בלבד, בלי המרה: הקבצים נשמרים כפי ש-go2rtc מקבל אותם.
+          </p>
+          <div className="grid grid-cols-3 gap-2 text-xs text-ink-300">
+            <label className="space-y-1">
+              <span>שמירה (ימים)</span>
+              <input type="number" min={1} max={365} value={form.retentionDays} onChange={(e) => setForm({ ...form, retentionDays: Number(e.target.value) })} className={cn(inputCls, 'w-full')} />
+            </label>
+            <label className="space-y-1">
+              <span>מקסימום (GB)</span>
+              <input type="number" min={1} max={10000} value={form.maxGb} onChange={(e) => setForm({ ...form, maxGb: Number(e.target.value) })} className={cn(inputCls, 'w-full')} />
+            </label>
+            <label className="space-y-1">
+              <span>אורך קובץ</span>
+              <select value={form.segmentMinutes} onChange={(e) => setForm({ ...form, segmentMinutes: Number(e.target.value) as SettingsT['recording']['segmentMinutes'] })} className={cn(inputCls, 'w-full')}>
+                {[5, 10, 15, 30, 60].map((m) => (
+                  <option key={m} value={m}>
+                    {m} דק׳
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Btn variant="primary" disabled={!dirty} onClick={() => save({ retentionDays: form.retentionDays, maxGb: form.maxGb, segmentMinutes: form.segmentMinutes })}>
+            <Save className="h-4 w-4" /> שמור מגבלות
+          </Btn>
+          <p className="text-xs text-ink-400">
+            הקלטות ישנות נמחקות אוטומטית לפי מספר הימים, וגם כשהנפח עובר את המקסימום (הישנות קודם). הערכה: מצלמת 1080p תופסת בערך 0.5–1 GB לשעה.
+          </p>
+        </div>
+        <div className="space-y-2 text-sm">
+          {st && (
+            <>
+              <div className="font-mono text-[11px] text-ink-400" dir="ltr">{st.dir}</div>
+              <div className="text-ink-200">
+                בשימוש: <b className="font-mono" dir="ltr">{formatGb(st.totalBytes)}</b> ({st.files} קבצים)
+                {st.freeBytes !== null && (
+                  <>
+                    {' '}· פנוי בדיסק: <b className="font-mono" dir="ltr">{formatGb(st.freeBytes)}</b>
+                  </>
+                )}
+              </div>
+              {st.recorders.length === 0 ? (
+                <p className="text-ink-400">אין מצלמות שמוקלטות כרגע.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {st.recorders.map((r) => (
+                    <li key={r.cameraId} className="flex items-start gap-2">
+                      <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', r.state === 'recording' ? 'bg-live animate-pulseDot' : 'bg-warn')} />
+                      <div className="min-w-0">
+                        <div className="text-ink-100">
+                          {names[r.cameraId] ?? r.cameraId} — {r.state === 'recording' ? 'מקליט' : 'ממתין למצלמה'}
+                        </div>
+                        {r.lastError && (
+                          <div className="break-all font-mono text-[11px] text-red-300/90" dir="ltr">
+                            {r.lastError}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </Card>
   );
 }

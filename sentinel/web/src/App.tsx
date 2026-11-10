@@ -9,7 +9,8 @@ import { useRoute } from './lib/router';
 import { Dashboard } from './pages/Dashboard';
 import { LiveCameras } from './pages/LiveCameras';
 import { Login } from './pages/Login';
-import { Events, Recordings } from './pages/Phase2';
+import { Events } from './pages/Phase2';
+import { Recordings } from './pages/Recordings';
 import { Settings } from './pages/Settings';
 
 type Auth = { loginRequired: boolean; authenticated: boolean };
@@ -77,7 +78,7 @@ function Shell({ loginRequired }: { loginRequired: boolean }) {
           ) : route === 'live' ? (
             <LiveCameras status={status} navigate={navigate} />
           ) : route === 'recordings' ? (
-            <Recordings />
+            <Recordings status={status} navigate={navigate} />
           ) : route === 'events' ? (
             <Events />
           ) : (

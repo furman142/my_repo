@@ -1,22 +1,5 @@
-import { Bell, Film } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
-
-export function Recordings() {
-  return (
-    <>
-      <PageHeader title="הקלטות" subtitle="שלב 2 — לא מומש עדיין" />
-      <Notice icon={Film} title="הקלטה למחשב תתווסף אחרי שה-MVP יעבוד עם שתי המצלמות">
-        <p>
-          הבסיס הטכני קיים: go2rtc מספק זרם MP4 מכל מצלמה (<code dir="ltr">/api/stream.mp4</code>), ו-SENTINEL כבר משתמש בו לבדיקת החיבור.
-          ההקלטה תבנה עליו: שמירת קבצים לפי מצלמה/תאריך/שעה בתיקייה מקומית, מדיניות מחיקה אוטומטית, וצפייה לפי ציר זמן.
-        </p>
-        <p>
-          כרגע אפשר לשמור תמונה מהשידור החי בעזרת כפתור המצלמה בפקדי כל תצוגה.
-        </p>
-      </Notice>
-    </>
-  );
-}
 
 export function Events() {
   return (
@@ -36,7 +19,7 @@ export function Events() {
   );
 }
 
-function Notice({ icon: Icon, title, children }: { icon: typeof Film; title: string; children: React.ReactNode }) {
+function Notice({ icon: Icon, title, children }: { icon: typeof Bell; title: string; children: React.ReactNode }) {
   return (
     <div className="max-w-3xl rounded-xl border border-ink-700 bg-ink-900 p-6">
       <div className="mb-3 flex items-center gap-3">

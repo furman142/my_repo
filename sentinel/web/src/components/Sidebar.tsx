@@ -6,7 +6,7 @@ import { Logo } from './Logo';
 export const NAV: Array<{ id: Route; label: string; icon: typeof Video; phase2?: boolean }> = [
   { id: 'dashboard', label: 'לוח בקרה', icon: LayoutDashboard },
   { id: 'live', label: 'מצלמות חיות', icon: Video },
-  { id: 'recordings', label: 'הקלטות', icon: Film, phase2: true },
+  { id: 'recordings', label: 'הקלטות', icon: Film },
   { id: 'events', label: 'אירועים', icon: Bell, phase2: true },
   { id: 'settings', label: 'הגדרות', icon: Settings },
 ];

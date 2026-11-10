@@ -5,6 +5,7 @@ import { cameraStatuses } from '../cameras/service.js';
 import { XIAOMI_REGIONS, modelInfo, parseXiaomiSource } from '../cameras/models.js';
 import { probeStream } from '../cameras/probe.js';
 import { applyStreams, readBaseSource } from '../cameras/streams.js';
+import { recordings } from '../recordings/recorder.js';
 import { fixWindowsFirewall, runNetDiag } from '../system/netdiag.js';
 import { go2rtc, Go2rtcError } from '../go2rtc/client.js';
 import { manager } from '../go2rtc/manager.js';
@@ -83,6 +84,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       /** Which browser transports the player may use. */
       transports: config.go2rtc.webrtc ? 'webrtc,mse,hls' : 'mse,hls',
       demoMode: getSettings().demoMode,
+      recording: Object.fromEntries(recordings.status().map((r) => [r.cameraId, r.state])),
       defaultQuality: getSettings().defaultQuality,
       cameras,
     };
@@ -100,11 +102,20 @@ export function registerApiRoutes(app: FastifyInstance) {
           location: z.enum(['indoor', 'outdoor']),
           enabled: z.boolean(),
           transport: z.enum(['auto', 'tcp']).optional(),
+          record: z.boolean().optional(),
         }),
       )
       .optional(),
     defaultQuality: z.enum(['hd', 'sd']).optional(),
     demoMode: z.boolean().optional(),
+    recording: z
+      .object({
+        enabled: z.boolean().optional(),
+        retentionDays: z.number().int().min(1).max(365).optional(),
+        maxGb: z.number().min(1).max(10_000).optional(),
+        segmentMinutes: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
+      })
+      .optional(),
   });
 
   app.put('/api/settings', async (req, reply) => {
@@ -129,14 +140,17 @@ export function registerApiRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: `go2rtc דחה את השינוי: ${errMsg(err)}` });
           }
         }
-        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport });
+        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport, record: patch.record ?? existing.record });
         byId.delete(patch.id);
       }
       next.cameras = [...reordered, ...byId.values()];
     }
     if (parsed.data.defaultQuality) next.defaultQuality = parsed.data.defaultQuality;
     if (parsed.data.demoMode !== undefined) next.demoMode = parsed.data.demoMode;
-    return saveSettings(next);
+    if (parsed.data.recording) next.recording = { ...cur.recording, ...parsed.data.recording };
+    const saved = saveSettings(next);
+    recordings.reconcile();
+    return saved;
   });
 
   // ---------- setup: Xiaomi discovery through go2rtc ----------
@@ -242,6 +256,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       streamSd: `${id}_sd`,
       enabled: true,
       transport: 'auto',
+      record: true,
     };
     try {
       await applyStreams(camera, parsed.data.source);
@@ -249,6 +264,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       return reply.code(502).send({ error: `go2rtc דחה את המקור: ${errMsg(err)}` });
     }
     saveSettings({ ...settings, cameras: [...settings.cameras, camera] });
+    recordings.reconcile();
     return camera;
   });
 
@@ -265,6 +281,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       }
     }
     saveSettings({ ...settings, cameras: settings.cameras.filter((c) => c.id !== cam.id) });
+    recordings.reconcile();
     return { ok: true };
   });
 

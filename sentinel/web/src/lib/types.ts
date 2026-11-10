@@ -32,6 +32,8 @@ export interface SystemStatus {
   go2rtc: { state: string; managed: boolean; version: string | null; lastExit: { code: number | null; at: string } | null };
   transports: string;
   demoMode: boolean;
+  /** cameraId -> recorder state */
+  recording: Record<string, 'recording' | 'waiting' | 'stopped'>;
   defaultQuality: 'hd' | 'sd';
   cameras: CameraStatus[];
 }
@@ -47,6 +49,7 @@ export interface Camera {
   streamSd: string | null;
   enabled: boolean;
   transport: 'auto' | 'tcp';
+  record: boolean;
 }
 
 export interface Settings {
@@ -54,6 +57,30 @@ export interface Settings {
   cameras: Camera[];
   defaultQuality: 'hd' | 'sd';
   demoMode: boolean;
+  recording: RecordingSettings;
+}
+
+export interface RecordingSettings {
+  enabled: boolean;
+  retentionDays: number;
+  maxGb: number;
+  segmentMinutes: 5 | 10 | 15 | 30 | 60;
+}
+
+export interface RecordingStatus {
+  dir: string;
+  totalBytes: number;
+  files: number;
+  freeBytes: number | null;
+  recorders: Array<{ cameraId: string; stream: string; state: 'recording' | 'waiting' | 'stopped'; since: string | null; lastError: string | null; currentFile: string | null }>;
+}
+
+export interface Segment {
+  file: string;
+  start: string;
+  seconds: number | null;
+  size: number;
+  inProgress: boolean;
 }
 
 export interface ProbeResult {

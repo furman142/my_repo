@@ -40,7 +40,7 @@ async function request(pathAndQuery: string, init: RequestInit = {}, timeoutMs =
   const res = await fetch(GO2RTC_BASE() + pathAndQuery, {
     ...init,
     headers: { Authorization: go2rtcAuthHeader(), ...(init.headers ?? {}) },
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
   });
   return res;
 }

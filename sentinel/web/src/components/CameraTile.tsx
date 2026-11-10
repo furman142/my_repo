@@ -32,9 +32,11 @@ interface Props {
   defaultQuality: Quality;
   /** go2rtc player modes allowed by the server, e.g. "mse,hls" or "webrtc,mse,hls". */
   transports: string;
+  /** The recorder is writing this camera to disk right now. */
+  recording?: boolean;
 }
 
-export function CameraTile({ camera, defaultQuality, transports }: Props) {
+export function CameraTile({ camera, defaultQuality, transports, recording }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<SentinelVideo | null>(null);
@@ -267,6 +269,11 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
           <div className="font-mono text-sm font-semibold tabular-nums">{drops}</div>
           <div className="text-[9px]">ניתוקים</div>
         </div>
+        {recording && (
+          <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-red-300" title="מוקלטת עכשיו למחשב" dir="ltr">
+            <span className="h-1.5 w-1.5 rounded-full bg-live" /> REC
+          </span>
+        )}
         <StateBadge state={state} demo={camera.demo} />
       </header>
 

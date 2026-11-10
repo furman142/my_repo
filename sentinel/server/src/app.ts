@@ -7,6 +7,8 @@ import { config, isLoopback, webDistExists } from './config.js';
 import { manager } from './go2rtc/manager.js';
 import { registerApiRoutes } from './routes/api.js';
 import { registerStreamRoutes } from './routes/stream.js';
+import { registerRecordingRoutes } from './routes/recordings.js';
+import { recordings } from './recordings/recorder.js';
 import { registerSecurity } from './security/auth.js';
 import { redact } from './security/redact.js';
 import { ensureDataDir, loadSecrets } from './security/secrets.js';
@@ -52,6 +54,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   registerSecurity(app);
   registerApiRoutes(app);
   registerStreamRoutes(app);
+  registerRecordingRoutes(app);
 
   if (webDistExists()) {
     await app.register(fastifyStatic, { root: config.webDist, maxAge: '1h' });
@@ -61,6 +64,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
       return reply.header('Cache-Control', 'no-cache').sendFile('index.html');
     });
   } else {
+    // reply.sendFile is still needed for recordings.
+    await app.register(fastifyStatic, { root: config.dataDir, serve: false });
     app.get('/', async (_req, reply) =>
       reply.type('text/plain; charset=utf-8').send('SENTINEL: frontend not built. Run "npm run build" in sentinel/ (or use "npm run dev").'),
     );
@@ -79,6 +84,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     await app.listen({ host: config.host, port: 0 });
   }
   const port = (app.server.address() as AddressInfo).port;
+  void recordings.start();
 
   const shown = isLoopback(config.host) ? `http://127.0.0.1:${port}` : `http://<this-computer-ip>:${port}`;
   app.log.info(`SENTINEL ready at ${shown}  (go2rtc: ${manager.state}, login: ${config.loginRequired ? 'on' : 'off'})`);
@@ -92,6 +98,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     port,
     go2rtc: { url: `http://127.0.0.1:${config.go2rtc.apiPort}`, username: secrets.go2rtcUser, password: secrets.go2rtcPassword },
     async stop() {
+      await recordings.stop();
       await manager.stop();
       await app.close();
     },
