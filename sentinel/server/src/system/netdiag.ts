@@ -99,7 +99,9 @@ const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 async function powershellJson<T>(script: string): Promise<T | null> {
   try {
-    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 15000, windowsHide: true });
+    // UTF-8 output, otherwise Hebrew network names arrive garbled.
+    const utf8 = '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ';
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', utf8 + script], { timeout: 15000, windowsHide: true, encoding: 'utf8' });
     const text = stdout.trim();
     if (!text) return [] as unknown as T;
     const v = JSON.parse(text);

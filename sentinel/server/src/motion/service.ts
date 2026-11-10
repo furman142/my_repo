@@ -1,11 +1,16 @@
 /**
  * Runs one motion detector per camera.
  *
- *   go2rtc /api/stream.mp4 (SD substream) --HTTP--> SENTINEL --stdin--> ffmpeg --stdout--> RGB frames
+ *   go2rtc /api/stream.mp4 (MAIN stream) --HTTP--> SENTINEL --stdin--> ffmpeg --stdout--> RGB frames
+ *
+ * The detector reads the SAME go2rtc stream as live view and recording, so it never opens an extra
+ * P2P session to the camera: Xiaomi cameras accept only a few simultaneous sessions, and a second
+ * (SD) session made the main one fail with "read udp … i/o timeout".
+ * To stay cheap on a 1080p H.265 stream, ffmpeg decodes key frames only (`-skip_frame nokey`,
+ * typically one every 1–2 s) and scales them to 320×180 RGB.
  *
  * SENTINEL fetches the stream itself and pipes it into ffmpeg, so ffmpeg never sees the go2rtc
- * password (nothing secret on its command line). ffmpeg decodes the low-resolution substream and
- * emits 320×180 RGB frames at 2 fps — cheap even for H.265.
+ * password (nothing secret on its command line).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
@@ -19,7 +24,6 @@ import { enforceEventRetention, newEventId, saveEvent, type MotionEvent } from '
 
 const W = 320;
 const H = 180;
-const FPS = 2;
 const FRAME_BYTES = W * H * 3;
 
 let ffmpegPathCache: string | null = null;
@@ -136,7 +140,13 @@ class CameraDetector {
 
       const proc = spawn(
         bin,
-        ['-hide_banner', '-loglevel', 'error', '-fflags', 'nobuffer', '-i', 'pipe:0', '-an', '-vf', `fps=${FPS},scale=${W}:${H}`, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'],
+        [
+          '-hide_banner', '-loglevel', 'error', '-fflags', 'nobuffer',
+          '-skip_frame', 'nokey', // decode key frames only
+          '-i', 'pipe:0', '-an',
+          '-vf', `scale=${W}:${H}`, '-fps_mode', 'passthrough',
+          '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1',
+        ],
         { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
       );
       this.proc = proc;
@@ -229,9 +239,9 @@ class MotionService extends EventEmitter {
   private detectors = new Map<string, CameraDetector>();
   private cleanup: NodeJS.Timeout | null = null;
 
-  /** Which go2rtc stream to analyse: the SD substream when there is one (much cheaper). */
-  private static streamFor(c: Pick<Camera, 'stream' | 'streamSd'>) {
-    return c.streamSd ?? c.stream;
+  /** Analyse the main stream: shares the camera session with live view and recording. */
+  private static streamFor(c: Pick<Camera, 'stream'>) {
+    return c.stream;
   }
 
   reconcile() {

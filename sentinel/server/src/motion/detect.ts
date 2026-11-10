@@ -1,7 +1,7 @@
 /**
  * Frame-difference motion detection on small frames (pure functions, unit-tested).
  *
- * Input: RGB24 frames (e.g. 320×180 at 2 fps, from the camera's SD substream via ffmpeg).
+ * Input: RGB24 frames (320×180, the camera's key frames — about one every 1–2 s — via ffmpeg).
  * 1. Downsample to a coarse grayscale grid (4×4 pixel cells) – kills sensor noise and JPEG/HEVC
  *    blocking artefacts.
  * 2. Compare against a slowly adapting background (exponential moving average).
@@ -52,7 +52,7 @@ export class MotionDetector {
       cellThreshold: 18,
       sensitivity: 'medium',
       confirmFrames: 2,
-      warmupFrames: 6,
+      warmupFrames: 3, // key frames arrive every ~1-2 s
       lightingRatio: 0.5,
       bgAlpha: 0.05,
       ...opts,

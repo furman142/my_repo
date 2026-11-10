@@ -702,7 +702,7 @@ function MotionCard({ settings, onSaved }: { settings: SettingsT; onSaved: () =>
             זיהוי תנועה מקומי
           </label>
           <p className="text-xs text-ink-400">
-            SENTINEL מנתח את זרם ה-SD של כל מצלמה (2 פריימים בשנייה) ומשווה לרקע. שינויי תאורה, כמו מעבר לראיית לילה, מסוננים. בערך 1–3% מעבד לכל מצלמה. הרגישות נקבעת לכל מצלמה ברשימת המצלמות.
+            SENTINEL מנתח את פריימי המפתח של כל מצלמה (בערך אחד לשנייה-שתיים), מאותו חיבור שמשמש לצפייה ולהקלטה, בלי חיבור נוסף למצלמה. כל פריים מושווה לרקע, ושינויי תאורה כמו מעבר לראיית לילה מסוננים. צריכת המעבד נמוכה מאוד. הרגישות נקבעת לכל מצלמה ברשימת המצלמות.
           </p>
           <label className="flex items-center gap-2 text-ink-100">
             <input type="checkbox" checked={settings.motion.notify} onChange={(e) => save({ notify: e.target.checked })} className="h-4 w-4 accent-amber-500" />

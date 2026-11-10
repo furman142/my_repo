@@ -71,7 +71,11 @@ export function NetDiagCard({ Card }: { Card: (p: { title: string; icon?: ReactN
   };
 
   const publicIfaces = diag?.firewall?.profiles?.filter((p) => p.category === 'Public').map((p) => p.iface) ?? [];
-  const needsFix = !!diag?.firewall && (diag.findings.includes('firewall-block') || diag.findings.includes('firewall-no-allow') || publicIfaces.length > 0);
+  // Windows sometimes refuses to let a normal user READ firewall rules: offer the fix anyway.
+  const rulesUnknown = !!diag?.firewall && diag.firewall.rules === null;
+  const needsFix =
+    !!diag?.firewall &&
+    (diag.findings.includes('firewall-block') || diag.findings.includes('firewall-no-allow') || publicIfaces.length > 0 || rulesUnknown);
 
   const fix = async () => {
     setFixing(true);
@@ -123,6 +127,11 @@ export function NetDiagCard({ Card }: { Card: (p: { title: string; icon?: ReactN
 
           {needsFix && (
             <div className="rounded-lg border border-signal/40 bg-signal-soft/20 p-3">
+              {rulesUnknown && (
+                <p className="mb-2 text-xs text-ink-300">
+                  Windows לא מאפשר לקרוא את כללי חומת האש בלי הרשאת מנהל, ולכן לא ידוע אם go2rtc מאושר. הכפתור יוודא שיש כלל נכון לנתיב הנוכחי של go2rtc. זה חשוב במיוחד אחרי עדכון, אם ההתקנה עברה לתיקייה אחרת.
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-3">
                 <button onClick={fix} disabled={fixing} className="inline-flex items-center gap-1.5 rounded-lg bg-signal px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50">
                   {fixing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} תקן את חומת האש עבור go2rtc
@@ -165,6 +174,7 @@ export function NetDiagCard({ Card }: { Card: (p: { title: string; icon?: ReactN
           </div>
 
           <div className="grid gap-1 font-mono text-[11px] text-ink-400" dir="ltr">
+            <div>go2rtc: {diag.go2rtcExe}</div>
             <div>this computer: {diag.local.map((l) => `${l.address}/${l.netmask} (${l.iface})`).join(' · ') || 'none'}</div>
             {diag.firewall && (
               <>
