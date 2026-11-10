@@ -46,6 +46,7 @@ export interface Camera {
   stream: string;
   streamSd: string | null;
   enabled: boolean;
+  transport: 'auto' | 'tcp';
 }
 
 export interface Settings {

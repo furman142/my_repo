@@ -21,6 +21,8 @@ export const cameraSchema = z.object({
   /** go2rtc stream name for the low-quality substream (null = not configured). */
   streamSd: z.string().regex(CAMERA_ID).nullable().default(null),
   enabled: z.boolean().default(true),
+  /** Xiaomi P2P transport: auto = camera decides (often UDP), tcp = force TCP (go2rtc `transport=tcp`). */
+  transport: z.enum(['auto', 'tcp']).default('auto'),
 });
 
 export const settingsSchema = z.object({

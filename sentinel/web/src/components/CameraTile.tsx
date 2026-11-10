@@ -53,6 +53,7 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
   const [fullscreen, setFullscreen] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [flash, setFlash] = useState(false);
+  const [drops, setDrops] = useState(0); // times a live stream was lost and re-established
 
   // ---- player lifecycle -------------------------------------------------------------
   useEffect(() => {
@@ -69,6 +70,7 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
     let lastVideoTime = -1;
     let lastReconnect = Date.now();
     let lastSoftRecover = 0;
+    let wasLost = false;
     let everLive = false;
     let rvfcHandle = 0;
     let disposed = false;
@@ -124,6 +126,10 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
         }
       }
       if (sinceFrame < LIVE_WINDOW_MS) {
+        if (wasLost) {
+          wasLost = false;
+          setDrops((d) => d + 1);
+        }
         next = 'live';
         everLive = true;
         startedAt = t;
@@ -132,8 +138,10 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
         next = 'connecting';
       } else if (everLive && sinceFrame < OFFLINE_AFTER_MS) {
         next = 'stalled';
+        if (sinceFrame > STALL_RECONNECT_MS) wasLost = true;
       } else {
         next = 'offline';
+        if (everLive) wasLost = true;
       }
 
       if (next !== 'live' && t - lastReconnect > STALL_RECONNECT_MS && (everLive ? sinceFrame : t - startedAt) > STALL_RECONNECT_MS) {
@@ -352,6 +360,7 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
           <span className="flex-1 truncate px-1 text-left font-mono text-[10px] text-ink-300" dir="ltr">
             {transport !== 'none' && transport.toUpperCase()}
             {resolution && ` · ${resolution}`}
+            {drops > 0 && <span className="text-warn">{` · ${drops} drop${drops > 1 ? 's' : ''}`}</span>}
           </span>
 
           <CtrlButton label="צילום תמונה" onClick={snapshot} disabled={!isLive}>

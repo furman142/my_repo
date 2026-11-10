@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { cameraStatuses } from '../cameras/service.js';
 import { XIAOMI_REGIONS, modelInfo, parseXiaomiSource } from '../cameras/models.js';
 import { probeStream } from '../cameras/probe.js';
+import { applyStreams, readBaseSource } from '../cameras/streams.js';
 import { fixWindowsFirewall, runNetDiag } from '../system/netdiag.js';
 import { go2rtc, Go2rtcError } from '../go2rtc/client.js';
 import { manager } from '../go2rtc/manager.js';
@@ -98,6 +99,7 @@ export function registerApiRoutes(app: FastifyInstance) {
           name: z.string().trim().min(1).max(40),
           location: z.enum(['indoor', 'outdoor']),
           enabled: z.boolean(),
+          transport: z.enum(['auto', 'tcp']).optional(),
         }),
       )
       .optional(),
@@ -117,7 +119,17 @@ export function registerApiRoutes(app: FastifyInstance) {
       for (const patch of parsed.data.cameras) {
         const existing = byId.get(patch.id);
         if (!existing) return reply.code(400).send({ error: `מצלמה לא קיימת: ${patch.id}` });
-        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled });
+        const transport = patch.transport ?? existing.transport;
+        if (transport !== existing.transport) {
+          const base = readBaseSource(existing.stream);
+          if (!base) return reply.code(409).send({ error: `לא נמצא מקור go2rtc עבור ${existing.name}` });
+          try {
+            await applyStreams({ ...existing, transport }, base);
+          } catch (err) {
+            return reply.code(502).send({ error: `go2rtc דחה את השינוי: ${errMsg(err)}` });
+          }
+        }
+        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport });
         byId.delete(patch.id);
       }
       next.cameras = [...reordered, ...byId.values()];
@@ -219,13 +231,6 @@ export function registerApiRoutes(app: FastifyInstance) {
     if (settings.cameras.some((c) => c.did === src.did)) return reply.code(409).send({ error: 'המצלמה הזו כבר נוספה' });
     const info = modelInfo(src.model);
 
-    try {
-      await go2rtc.putStream(id, parsed.data.source);
-      // Documented go2rtc option: subtype=hd/sd/auto/0-5
-      await go2rtc.putStream(`${id}_sd`, `${parsed.data.source}&subtype=sd`);
-    } catch (err) {
-      return reply.code(502).send({ error: `go2rtc דחה את המקור: ${errMsg(err)}` });
-    }
     const camera: Camera = {
       id,
       name: parsed.data.name,
@@ -236,7 +241,13 @@ export function registerApiRoutes(app: FastifyInstance) {
       stream: id,
       streamSd: `${id}_sd`,
       enabled: true,
+      transport: 'auto',
     };
+    try {
+      await applyStreams(camera, parsed.data.source);
+    } catch (err) {
+      return reply.code(502).send({ error: `go2rtc דחה את המקור: ${errMsg(err)}` });
+    }
     saveSettings({ ...settings, cameras: [...settings.cameras, camera] });
     return camera;
   });

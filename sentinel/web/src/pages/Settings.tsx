@@ -338,7 +338,7 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
     try {
       await api('/api/settings', {
         method: 'PUT',
-        json: { cameras: rows.map(({ id, name, location, enabled }) => ({ id, name, location, enabled })) },
+        json: { cameras: rows.map(({ id, name, location, enabled, transport }) => ({ id, name, location, enabled, transport })) },
       });
       setMsg('נשמר');
       onSaved();
@@ -399,6 +399,16 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                   <select value={c.location} onChange={(e) => update(i, { location: e.target.value as Camera['location'] })} className={inputCls} aria-label="מיקום">
                     <option value="indoor">פנימית</option>
                     <option value="outdoor">חיצונית</option>
+                  </select>
+                  <select
+                    value={c.transport}
+                    onChange={(e) => update(i, { transport: e.target.value as Camera['transport'] })}
+                    className={inputCls}
+                    aria-label="פרוטוקול חיבור"
+                    title="TCP מתקן אובדן חבילות ב-Wi-Fi חלש. אם המצלמה לא תומכת — חזור לאוטומטי."
+                  >
+                    <option value="auto">חיבור: אוטומטי</option>
+                    <option value="tcp">חיבור: TCP (יציב ב-Wi-Fi)</option>
                   </select>
                   <label className="flex items-center gap-1.5 text-sm text-ink-300">
                     <input type="checkbox" checked={c.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} className="accent-blue-500" /> מוצגת
