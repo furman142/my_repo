@@ -25,6 +25,10 @@ export const cameraSchema = z.object({
   transport: z.enum(['auto', 'tcp']).default('auto'),
   /** Include this camera in continuous recording (when recording is enabled). */
   record: z.boolean().default(true),
+  /** Local motion detection sensitivity for this camera. */
+  motion: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
+  /** Show an alert (desktop notification / in-app) when motion starts. */
+  alerts: z.boolean().default(true),
 });
 
 export const settingsSchema = z.object({
@@ -39,6 +43,15 @@ export const settingsSchema = z.object({
       retentionDays: z.number().int().min(1).max(365).default(7),
       maxGb: z.number().min(1).max(10_000).default(50),
       segmentMinutes: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).default(10),
+      /** continuous = always; motion = only while motion is detected (+ post-roll). */
+      mode: z.enum(['continuous', 'motion']).default('continuous'),
+    })
+    .default({}),
+  motion: z
+    .object({
+      enabled: z.boolean().default(false),
+      notify: z.boolean().default(true),
+      retentionDays: z.number().int().min(1).max(365).default(30),
     })
     .default({}),
 });

@@ -178,10 +178,37 @@ function recoverPartFiles() {
 }
 
 // ---------------------------------------------------------------------------------------
+/** Keep recording this long after motion stops (motion mode). */
+export const MOTION_POSTROLL_MS = 30_000;
+
+interface MotionSource {
+  on(event: 'motion-start' | 'motion-end', fn: (ev: { camera: string }) => void): unknown;
+}
+
 class RecordingService {
   private recorders = new Map<string, CameraRecorder>();
   private cleanupTimer: NodeJS.Timeout | null = null;
   private started = false;
+  private motionActive = new Set<string>();
+  private holdUntil = new Map<string, number>();
+
+  /** Motion-triggered mode: start a recorder when motion starts, stop after the post-roll. */
+  attachMotion(src: MotionSource) {
+    src.on('motion-start', ({ camera }) => {
+      this.motionActive.add(camera);
+      if (getSettings().recording.mode === 'motion') this.reconcile();
+    });
+    src.on('motion-end', ({ camera }) => {
+      this.motionActive.delete(camera);
+      this.holdUntil.set(camera, Date.now() + MOTION_POSTROLL_MS);
+      setTimeout(() => this.reconcile(), MOTION_POSTROLL_MS + 200);
+    });
+  }
+
+  private wantsNow(id: string): boolean {
+    if (getSettings().recording.mode !== 'motion') return true;
+    return this.motionActive.has(id) || (this.holdUntil.get(id) ?? 0) > Date.now();
+  }
 
   /** Start/stop recorders so they match the current settings. */
   reconcile() {
@@ -193,6 +220,7 @@ class RecordingService {
         wanted.set('sentinel_demo_1', 'sentinel_demo_1');
         wanted.set('sentinel_demo_2', 'sentinel_demo_2');
       }
+      for (const id of [...wanted.keys()]) if (!this.wantsNow(id)) wanted.delete(id);
     }
     for (const [id, rec] of this.recorders) {
       if (wanted.get(id) !== rec.stream) {

@@ -1,5 +1,6 @@
 import { Loader2, ServerCrash } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { AlertToasts } from './components/AlertToasts';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { LiveStatesProvider } from './hooks/liveStates';
@@ -9,9 +10,10 @@ import { useRoute } from './lib/router';
 import { Dashboard } from './pages/Dashboard';
 import { LiveCameras } from './pages/LiveCameras';
 import { Login } from './pages/Login';
-import { Events } from './pages/Phase2';
+import { Events } from './pages/Events';
 import { Recordings } from './pages/Recordings';
 import { Settings } from './pages/Settings';
+import { Stats } from './pages/Stats';
 
 type Auth = { loginRequired: boolean; authenticated: boolean };
 
@@ -66,6 +68,7 @@ function Shell({ loginRequired }: { loginRequired: boolean }) {
   return (
     <div className="min-h-screen">
       <Sidebar route={route} navigate={navigate} />
+      <AlertToasts navigate={navigate} />
       <div className="lg:ps-60">
         <TopBar status={status} serverError={error} />
         <main className="mx-auto max-w-[1800px] px-4 pb-24 pt-5 sm:px-6 lg:pb-10">
@@ -80,7 +83,9 @@ function Shell({ loginRequired }: { loginRequired: boolean }) {
           ) : route === 'recordings' ? (
             <Recordings status={status} navigate={navigate} />
           ) : route === 'events' ? (
-            <Events />
+            <Events status={status} navigate={navigate} />
+          ) : route === 'stats' ? (
+            <Stats status={status} />
           ) : (
             <Settings status={status} refresh={refresh} loginRequired={loginRequired} />
           )}

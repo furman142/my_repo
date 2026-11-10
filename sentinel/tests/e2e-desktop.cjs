@@ -22,6 +22,16 @@ const check = (n, ok, d = '') => console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ?
   check('both streams play inside the desktop app', live && tiles.every((x) => x.cur > 1), JSON.stringify(tiles));
   await win.screenshot({ path: out('desktop-app.png') });
 
+  // motion detection with the bundled ffmpeg
+  await win.evaluate(async () => fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motion: { enabled: true } }) }));
+  let ms = null;
+  for (let i = 0; i < 20; i++) {
+    ms = await win.evaluate(async () => (await fetch('/api/motion/status')).json());
+    if (ms.detectors.some((d) => d.active)) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  check('motion detection runs with the bundled ffmpeg', ms.detectors.length === 2 && ms.detectors.some((d) => d.active) && ms.detectors.every((d) => d.state === 'watching'), JSON.stringify(ms.detectors.map((d) => [d.camera, d.state, !!d.active, d.lastError])));
+
   // go2rtc window with automatic login
   await win.goto(base + '/settings');
   await win.waitForSelector('a:has-text("פתח את go2rtc")');

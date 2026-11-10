@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowDown,
   Circle as RecIcon,
   ArrowUp,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { NetDiagCard, isUdpTimeout } from '../components/NetDiagCard';
+import { PhoneAccessCard } from '../components/PhoneAccessCard';
 import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
 import type { Camera, ProbeResult, RecordingStatus, Settings as SettingsT, SetupState, SystemStatus, XiaomiDevice } from '../lib/types';
@@ -42,8 +44,10 @@ export function Settings({ status, refresh, loginRequired }: { status: SystemSta
         <SetupWizard onAdded={reload} />
         {settings && <CamerasEditor settings={settings} onSaved={reload} />}
         <NetDiagCard Card={Card} />
+        {settings && <MotionCard settings={settings} onSaved={reload} />}
         {settings && <RecordingCard settings={settings} onSaved={reload} />}
         {settings && <Preferences settings={settings} onSaved={reload} />}
+        <PhoneAccessCard Card={Card} />
         <SecurityCard status={status} loginRequired={loginRequired} />
       </div>
     </>
@@ -340,7 +344,7 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
     try {
       await api('/api/settings', {
         method: 'PUT',
-        json: { cameras: rows.map(({ id, name, location, enabled, transport, record }) => ({ id, name, location, enabled, transport, record })) },
+        json: { cameras: rows.map(({ id, name, location, enabled, transport, record, motion, alerts }) => ({ id, name, location, enabled, transport, record, motion, alerts })) },
       });
       setMsg('נשמר');
       onSaved();
@@ -412,6 +416,20 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                     <option value="auto">חיבור: אוטומטי</option>
                     <option value="tcp">חיבור: TCP (יציב ב-Wi-Fi)</option>
                   </select>
+                  <select
+                    value={c.motion}
+                    onChange={(e) => update(i, { motion: e.target.value as Camera['motion'] })}
+                    className={inputCls}
+                    aria-label="רגישות זיהוי תנועה"
+                  >
+                    <option value="off">תנועה: כבוי</option>
+                    <option value="low">תנועה: רגישות נמוכה</option>
+                    <option value="medium">תנועה: בינונית</option>
+                    <option value="high">תנועה: גבוהה</option>
+                  </select>
+                  <label className="flex items-center gap-1.5 text-sm text-ink-300" title="התראה כשמתחילה תנועה">
+                    <input type="checkbox" checked={c.alerts} onChange={(e) => update(i, { alerts: e.target.checked })} className="accent-amber-500" /> התראות
+                  </label>
                   <label className="flex items-center gap-1.5 text-sm text-ink-300" title="כלול את המצלמה בהקלטה הרציפה">
                     <input type="checkbox" checked={c.record} onChange={(e) => update(i, { record: e.target.checked })} className="accent-red-500" /> מקליטה
                   </label>
@@ -509,7 +527,7 @@ function SecurityCard({ status, loginRequired }: { status: SystemStatus; loginRe
         <li>• טוקן Xiaomi וסודות המערכת נשמרים רק בתיקייה <code dir="ltr">sentinel/data</code> (הרשאות לבעלים בלבד), שמוחרגת מ-Git.</li>
         <li>• לוגים עוברים סינון של מפתחות, טוקנים וכתובות Xiaomi.</li>
         <li>
-          • כניסה עם סיסמה: <b className="text-ink-100">{loginRequired ? 'פעילה' : 'כבויה (גישה מהמחשב הזה בלבד)'}</b>. לגישה מהטלפון ברשת הביתית — ראה README (SENTINEL_HOST + SENTINEL_PASSWORD). אין לפתוח פורטים בראוטר.
+          • כניסה עם סיסמה: <b className="text-ink-100">{loginRequired ? 'פעילה' : 'כבויה (גישה מהמחשב הזה בלבד)'}</b>. לגישה מהטלפון — ראה "גישה מהטלפון" למעלה. אין לפתוח פורטים בראוטר.
         </li>
         <li className="font-mono text-xs text-ink-400" dir="ltr">
           go2rtc {status.go2rtc.version ?? '?'} · {status.go2rtc.state}
@@ -566,6 +584,20 @@ function RecordingCard({ settings, onSaved }: { settings: SettingsT; onSaved: ()
             <input type="checkbox" checked={settings.recording.enabled} onChange={(e) => save({ enabled: e.target.checked })} className="h-4 w-4 accent-red-500" />
             הקלטה רציפה למחשב
           </label>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-ink-200">
+            מצב:
+            <select value={settings.recording.mode} onChange={(e) => save({ mode: e.target.value as SettingsT['recording']['mode'] })} className={inputCls} aria-label="מצב הקלטה">
+              <option value="continuous">רציף — 24/7</option>
+              <option value="motion">רק כשיש תנועה (+30 שנ׳ אחרי)</option>
+            </select>
+          </div>
+          {settings.recording.mode === 'motion' && (
+            <p className={cn('text-xs', settings.motion.enabled ? 'text-ink-400' : 'text-warn')}>
+              {settings.motion.enabled
+                ? 'חוסך מקום רב. ההקלטה מתחילה כשמזוהה תנועה, ולכן 2–5 השניות הראשונות של האירוע עלולות לא להיכלל (זמן החיבור למצלמה).'
+                : 'זיהוי התנועה כבוי — במצב הזה לא יוקלט כלום. הפעל את "זיהוי תנועה מקומי" למעלה.'}
+            </p>
+          )}
           <p className="text-xs text-ink-400">
             מקליט כל מצלמה שמסומנת "מקליטה" ברשימת המצלמות, גם כשהחלון סגור למגש. וידאו בלבד, בלי המרה: הקבצים נשמרים כפי ש-go2rtc מקבל אותם.
           </p>
@@ -631,6 +663,77 @@ function RecordingCard({ settings, onSaved }: { settings: SettingsT; onSaved: ()
               )}
             </>
           )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------------------------------
+function MotionCard({ settings, onSaved }: { settings: SettingsT; onSaved: () => void }) {
+  const [st, setSt] = useState<{ enabled: boolean; detectors: Array<{ camera: string; state: string; lastError: string | null; active: unknown }> } | null>(null);
+  const [days, setDays] = useState(settings.motion.retentionDays);
+  useEffect(() => setDays(settings.motion.retentionDays), [settings.motion.retentionDays]);
+  const load = useCallback(async () => {
+    try {
+      setSt(await api('/api/motion/status'));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+    const t = window.setInterval(load, 4000);
+    return () => window.clearInterval(t);
+  }, [load]);
+  const save = async (patch: Partial<SettingsT['motion']>) => {
+    await api('/api/settings', { method: 'PUT', json: { motion: patch } });
+    onSaved();
+    void load();
+  };
+  const names: Record<string, string> = { sentinel_demo_1: 'DEMO 1', sentinel_demo_2: 'DEMO 2', ...Object.fromEntries(settings.cameras.map((c) => [c.id, c.name])) };
+
+  return (
+    <Card title="זיהוי תנועה והתראות" icon={<Activity className="h-4 w-4 text-warn" />}>
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="space-y-3 text-sm">
+          <label className="flex items-center gap-2 text-ink-100">
+            <input type="checkbox" checked={settings.motion.enabled} onChange={(e) => save({ enabled: e.target.checked })} className="h-4 w-4 accent-amber-500" />
+            זיהוי תנועה מקומי
+          </label>
+          <p className="text-xs text-ink-400">
+            SENTINEL מנתח את זרם ה-SD של כל מצלמה (2 פריימים בשנייה) ומשווה לרקע. שינויי תאורה, כמו מעבר לראיית לילה, מסוננים. בערך 1–3% מעבד לכל מצלמה. הרגישות נקבעת לכל מצלמה ברשימת המצלמות.
+          </p>
+          <label className="flex items-center gap-2 text-ink-100">
+            <input type="checkbox" checked={settings.motion.notify} onChange={(e) => save({ notify: e.target.checked })} className="h-4 w-4 accent-amber-500" />
+            התראות כשמתחילה תנועה (התראת מערכת באפליקציה, הודעה בממשק)
+          </label>
+          <div className="flex items-center gap-2 text-xs text-ink-300">
+            שמירת אירועים
+            <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} className={cn(inputCls, 'w-20')} />
+            ימים
+            <Btn disabled={days === settings.motion.retentionDays} onClick={() => save({ retentionDays: days })}>
+              <Save className="h-3.5 w-3.5" />
+            </Btn>
+          </div>
+        </div>
+        <div className="space-y-1.5 text-sm">
+          {st && st.detectors.length === 0 && <p className="text-ink-400">{settings.motion.enabled ? 'אין מצלמות עם זיהוי תנועה פעיל.' : 'כבוי.'}</p>}
+          {st?.detectors.map((d) => (
+            <div key={d.camera} className="flex items-start gap-2">
+              <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', d.active ? 'bg-warn animate-pulseDot' : d.state === 'watching' ? 'bg-ok' : 'bg-ink-500')} />
+              <div className="min-w-0">
+                <div className="text-ink-100">
+                  {names[d.camera] ?? d.camera} — {d.active ? 'תנועה עכשיו' : d.state === 'watching' ? 'צופה' : 'ממתין למצלמה'}
+                </div>
+                {d.lastError && (
+                  <div className="break-all font-mono text-[11px] text-red-300/90" dir="ltr">
+                    {d.lastError}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </Card>

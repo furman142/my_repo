@@ -47,8 +47,8 @@ export interface CameraStatus extends Camera {
 }
 
 const DEMO_CAMERAS: Camera[] = [
-  { id: 'sentinel_demo_1', name: 'DEMO — תבנית בדיקה 1', model: 'go2rtc virtual', did: '', product: 'ffmpeg testsrc2', location: 'indoor', stream: 'sentinel_demo_1', streamSd: null, enabled: true, transport: 'auto', record: true },
-  { id: 'sentinel_demo_2', name: 'DEMO — תבנית בדיקה 2', model: 'go2rtc virtual', did: '', product: 'ffmpeg smptebars', location: 'outdoor', stream: 'sentinel_demo_2', streamSd: null, enabled: true, transport: 'auto', record: true },
+  { id: 'sentinel_demo_1', name: 'DEMO — תבנית בדיקה 1', model: 'go2rtc virtual', did: '', product: 'ffmpeg testsrc2', location: 'indoor', stream: 'sentinel_demo_1', streamSd: null, enabled: true, transport: 'auto', record: true, motion: 'medium', alerts: true },
+  { id: 'sentinel_demo_2', name: 'DEMO — תבנית בדיקה 2', model: 'go2rtc virtual', did: '', product: 'ffmpeg smptebars', location: 'outdoor', stream: 'sentinel_demo_2', streamSd: null, enabled: true, transport: 'auto', record: true, motion: 'medium', alerts: true },
 ];
 
 export async function cameraStatuses(): Promise<{ go2rtcReachable: boolean; cameras: CameraStatus[] }> {

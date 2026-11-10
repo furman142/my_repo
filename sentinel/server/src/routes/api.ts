@@ -6,6 +6,7 @@ import { XIAOMI_REGIONS, modelInfo, parseXiaomiSource } from '../cameras/models.
 import { probeStream } from '../cameras/probe.js';
 import { applyStreams, readBaseSource } from '../cameras/streams.js';
 import { recordings } from '../recordings/recorder.js';
+import { motion } from '../motion/service.js';
 import { fixWindowsFirewall, runNetDiag } from '../system/netdiag.js';
 import { go2rtc, Go2rtcError } from '../go2rtc/client.js';
 import { manager } from '../go2rtc/manager.js';
@@ -85,6 +86,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       transports: config.go2rtc.webrtc ? 'webrtc,mse,hls' : 'mse,hls',
       demoMode: getSettings().demoMode,
       recording: Object.fromEntries(recordings.status().map((r) => [r.cameraId, r.state])),
+      motion: Object.fromEntries(motion.activeMotion().map((m) => [m.camera, m.start])),
       defaultQuality: getSettings().defaultQuality,
       cameras,
     };
@@ -103,6 +105,8 @@ export function registerApiRoutes(app: FastifyInstance) {
           enabled: z.boolean(),
           transport: z.enum(['auto', 'tcp']).optional(),
           record: z.boolean().optional(),
+          motion: z.enum(['off', 'low', 'medium', 'high']).optional(),
+          alerts: z.boolean().optional(),
         }),
       )
       .optional(),
@@ -114,6 +118,14 @@ export function registerApiRoutes(app: FastifyInstance) {
         retentionDays: z.number().int().min(1).max(365).optional(),
         maxGb: z.number().min(1).max(10_000).optional(),
         segmentMinutes: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
+        mode: z.enum(['continuous', 'motion']).optional(),
+      })
+      .optional(),
+    motion: z
+      .object({
+        enabled: z.boolean().optional(),
+        notify: z.boolean().optional(),
+        retentionDays: z.number().int().min(1).max(365).optional(),
       })
       .optional(),
   });
@@ -140,7 +152,7 @@ export function registerApiRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: `go2rtc דחה את השינוי: ${errMsg(err)}` });
           }
         }
-        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport, record: patch.record ?? existing.record });
+        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport, record: patch.record ?? existing.record, motion: patch.motion ?? existing.motion, alerts: patch.alerts ?? existing.alerts });
         byId.delete(patch.id);
       }
       next.cameras = [...reordered, ...byId.values()];
@@ -148,8 +160,10 @@ export function registerApiRoutes(app: FastifyInstance) {
     if (parsed.data.defaultQuality) next.defaultQuality = parsed.data.defaultQuality;
     if (parsed.data.demoMode !== undefined) next.demoMode = parsed.data.demoMode;
     if (parsed.data.recording) next.recording = { ...cur.recording, ...parsed.data.recording };
+    if (parsed.data.motion) next.motion = { ...cur.motion, ...parsed.data.motion };
     const saved = saveSettings(next);
     recordings.reconcile();
+    motion.reconcile();
     return saved;
   });
 
@@ -257,6 +271,8 @@ export function registerApiRoutes(app: FastifyInstance) {
       enabled: true,
       transport: 'auto',
       record: true,
+      motion: 'medium',
+      alerts: true,
     };
     try {
       await applyStreams(camera, parsed.data.source);
@@ -265,6 +281,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     }
     saveSettings({ ...settings, cameras: [...settings.cameras, camera] });
     recordings.reconcile();
+    motion.reconcile();
     return camera;
   });
 
@@ -282,6 +299,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     }
     saveSettings({ ...settings, cameras: settings.cameras.filter((c) => c.id !== cam.id) });
     recordings.reconcile();
+    motion.reconcile();
     return { ok: true };
   });
 
@@ -300,7 +318,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     return runNetDiag();
   });
 
-  app.post<{ Body: { makePrivate?: unknown } }>('/api/system/firewall/fix', async (req, reply) => {
+  app.post<{ Body: { makePrivate?: unknown; lan?: unknown } }>('/api/system/firewall/fix', async (req, reply) => {
     if (!isLoopbackIp(req.ip)) return reply.code(403).send({ error: 'זמין רק מהמחשב שמריץ את SENTINEL' });
     if (process.platform !== 'win32') return reply.code(400).send({ error: 'Windows only' });
     // Only interfaces that Windows currently reports as Public may be switched to Private.
@@ -311,7 +329,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       const publicIfaces = new Set((diag.firewall?.profiles ?? []).filter((p) => p.category === 'Public').map((p) => p.iface));
       allowed = wanted.filter((w) => publicIfaces.has(w));
     }
-    return fixWindowsFirewall(allowed);
+    return fixWindowsFirewall(allowed, req.body?.lan === true);
   });
 
   app.post('/api/system/go2rtc/restart', async () => {

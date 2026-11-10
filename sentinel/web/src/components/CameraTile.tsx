@@ -34,9 +34,11 @@ interface Props {
   transports: string;
   /** The recorder is writing this camera to disk right now. */
   recording?: boolean;
+  /** Local motion detection reports movement right now. */
+  motion?: boolean;
 }
 
-export function CameraTile({ camera, defaultQuality, transports, recording }: Props) {
+export function CameraTile({ camera, defaultQuality, transports, recording, motion }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<SentinelVideo | null>(null);
@@ -269,6 +271,11 @@ export function CameraTile({ camera, defaultQuality, transports, recording }: Pr
           <div className="font-mono text-sm font-semibold tabular-nums">{drops}</div>
           <div className="text-[9px]">ניתוקים</div>
         </div>
+        {motion && (
+          <span className="shrink-0 rounded border border-warn/50 bg-warn/10 px-1.5 py-0.5 text-[10px] font-semibold text-warn" title="זוהתה תנועה עכשיו">
+            תנועה
+          </span>
+        )}
         {recording && (
           <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-red-300" title="מוקלטת עכשיו למחשב" dir="ltr">
             <span className="h-1.5 w-1.5 rounded-full bg-live" /> REC

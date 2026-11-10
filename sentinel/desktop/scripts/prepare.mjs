@@ -5,7 +5,8 @@
 //   build/bin/go2rtc(.exe)   – the official go2rtc release for THIS OS/CPU
 // Requires `npm install` in sentinel/ first (server + web dependencies).
 import { execSync } from 'node:child_process';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -37,11 +38,18 @@ await build({
   // CommonJS dependencies (fastify, ws, …) call require(); give the ESM bundle one.
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   // Optional native speed-ups of `ws`; it falls back to JS when they are missing.
-  external: ['bufferutil', 'utf-8-validate'],
+  external: ['bufferutil', 'utf-8-validate', 'ffmpeg-static'],
   logLevel: 'warning',
   legalComments: 'linked',
 });
 
 console.log('• go2rtc…');
 execSync(`node "${path.join(SENTINEL, 'scripts', 'install-go2rtc.mjs')}" --out "${path.join(OUT, 'bin')}"`, { stdio: 'inherit' });
+console.log('• ffmpeg (motion detection)…');
+const require = createRequire(import.meta.url);
+const ffmpegSrc = require(path.join(SENTINEL, 'node_modules', 'ffmpeg-static'));
+if (!ffmpegSrc || !existsSync(ffmpegSrc)) throw new Error('ffmpeg-static binary missing: run npm install in sentinel/');
+const ffmpegDst = path.join(OUT, 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+copyFileSync(ffmpegSrc, ffmpegDst);
+chmodSync(ffmpegDst, 0o755);
 console.log('✔ desktop/build ready');

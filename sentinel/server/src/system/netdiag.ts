@@ -174,7 +174,7 @@ export async function runNetDiag(): Promise<NetDiag> {
  *  - optionally switches the given network interfaces from Public to Private
  * Nothing else is changed, and nothing is opened to the internet.
  */
-export async function fixWindowsFirewall(makePrivate: string[] = []): Promise<{ ok: boolean; error?: string }> {
+export async function fixWindowsFirewall(makePrivate: string[] = [], lan = false): Promise<{ ok: boolean; error?: string }> {
   if (!isWin) return { ok: false, error: 'Windows only' };
   const exe = psQuote(config.go2rtc.bin);
   const lines = [
@@ -183,6 +183,15 @@ export async function fixWindowsFirewall(makePrivate: string[] = []): Promise<{ 
     "Get-NetFirewallApplicationFilter -Program $exe -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Block' } | Remove-NetFirewallRule",
     "Get-NetFirewallRule -DisplayName 'SENTINEL go2rtc (cameras)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule",
     "New-NetFirewallRule -DisplayName 'SENTINEL go2rtc (cameras)' -Description 'Lets Xiaomi cameras on the home network answer go2rtc (SENTINEL).' -Direction Inbound -Program $exe -Protocol UDP -Action Allow -Profile Private,Domain | Out-Null",
+    ...(lan
+      ? [
+          // Phone access on the home network: the dashboard port (this app) and WebRTC media (go2rtc).
+          "Get-NetFirewallRule -DisplayName 'SENTINEL dashboard (home network)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule",
+          `New-NetFirewallRule -DisplayName 'SENTINEL dashboard (home network)' -Direction Inbound -Program ${psQuote(process.execPath)} -Protocol TCP -LocalPort ${config.port} -Action Allow -Profile Private | Out-Null`,
+          "Get-NetFirewallRule -DisplayName 'SENTINEL go2rtc WebRTC (home network)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule",
+          `New-NetFirewallRule -DisplayName 'SENTINEL go2rtc WebRTC (home network)' -Direction Inbound -Program $exe -Protocol TCP -LocalPort ${config.go2rtc.webrtcPort} -Action Allow -Profile Private | Out-Null`,
+        ]
+      : []),
     ...makePrivate.map((alias) => `Set-NetConnectionProfile -InterfaceAlias ${psQuote(alias)} -NetworkCategory Private`),
   ];
   const encoded = Buffer.from(lines.join('\n'), 'utf16le').toString('base64');

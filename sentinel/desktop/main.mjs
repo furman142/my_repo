@@ -3,7 +3,7 @@
 // Runs the SENTINEL server in-process (it supervises go2rtc as a child process) and shows the
 // dashboard in a locked-down window. Nothing listens beyond 127.0.0.1 unless the user enables
 // LAN mode in the advanced settings file.
-import { app, BrowserWindow, dialog, Menu, nativeImage, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, Notification, session, shell, Tray } from 'electron';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,6 +20,8 @@ const PREFS_FILE = path.join(USER, 'desktop.json');
 const startHidden = process.argv.includes('--hidden');
 
 app.setName('SENTINEL');
+// Windows: required for native notifications to show the app name/icon.
+if (process.platform === 'win32') app.setAppUserModelId('local.sentinel.securitycenter');
 
 // ---- one instance only ----------------------------------------------------------------
 if (!app.requestSingleInstanceLock()) {
@@ -31,6 +33,8 @@ if (!app.requestSingleInstanceLock()) {
 /** @type {Tray | null} */ let tray = null;
 /** @type {Awaited<ReturnType<any>> | null} */ let server = null;
 let quitting = false;
+/** Page to open the next time the window is shown (e.g. after clicking a notification). */
+let nextPath = null;
 
 // ---- small persisted desktop preferences ------------------------------------------------
 function readPrefs() {
@@ -99,9 +103,21 @@ async function startBackend() {
   // Recordings go to the user's Videos folder, where people expect them.
   process.env.SENTINEL_RECORDINGS_DIR = path.join(app.getPath('videos'), 'SENTINEL');
   process.env.GO2RTC_BIN = path.join(RES, 'bin', process.platform === 'win32' ? 'go2rtc.exe' : 'go2rtc');
+  process.env.FFMPEG_BIN = path.join(RES, 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 
   const mod = await import(pathToFileURL(path.join(RES, 'server', 'server.mjs')).href);
-  return mod.startServer({ fallbackToFreePort: true, logFile });
+  return mod.startServer({
+    fallbackToFreePort: true,
+    logFile,
+    // Settings → "phone access" needs a restart to change the listening address.
+    restart: () => {
+      quitting = true;
+      void Promise.resolve(server?.stop()).finally(() => {
+        app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--hidden') });
+        app.exit(0);
+      });
+    },
+  });
 }
 
 // ---- window -------------------------------------------------------------------------------
@@ -161,7 +177,10 @@ function createWindow() {
     if (!quitting) win.loadURL('about:blank'); // stop pulling video from the cameras
   });
   win.on('show', () => {
-    if (!win.webContents.getURL().startsWith(server.url)) win.loadURL(server.url);
+    if (nextPath) {
+      win.loadURL(server.url + nextPath);
+      nextPath = null;
+    } else if (!win.webContents.getURL().startsWith(server.url)) win.loadURL(server.url);
   });
 }
 
@@ -300,4 +319,25 @@ app.whenReady().then(async () => {
   buildAppMenu();
   createWindow();
   buildTray();
+
+  // Native notification when motion starts (max one per camera per minute).
+  const lastByCamera = new Map();
+  server.onAlert((a) => {
+    if (!Notification.isSupported()) return;
+    const now = Date.now();
+    if (now - (lastByCamera.get(a.camera) ?? 0) < 60_000) return;
+    lastByCamera.set(a.camera, now);
+    const t = new Date(a.start).toLocaleTimeString('he-IL', { hour12: false });
+    const n = new Notification({ title: `תנועה: ${a.name}`, body: `זוהתה תנועה ב-${t}`, icon: path.join(ASSETS, 'icon.png') });
+    n.on('click', () => {
+      if (win?.isVisible()) {
+        win.loadURL(server.url + '/events');
+        showWindow();
+      } else {
+        nextPath = '/events';
+        showWindow();
+      }
+    });
+    n.show();
+  });
 });

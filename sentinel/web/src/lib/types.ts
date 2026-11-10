@@ -34,6 +34,8 @@ export interface SystemStatus {
   demoMode: boolean;
   /** cameraId -> recorder state */
   recording: Record<string, 'recording' | 'waiting' | 'stopped'>;
+  /** cameraId -> ISO start of motion happening right now */
+  motion: Record<string, string>;
   defaultQuality: 'hd' | 'sd';
   cameras: CameraStatus[];
 }
@@ -50,6 +52,8 @@ export interface Camera {
   enabled: boolean;
   transport: 'auto' | 'tcp';
   record: boolean;
+  motion: 'off' | 'low' | 'medium' | 'high';
+  alerts: boolean;
 }
 
 export interface Settings {
@@ -58,6 +62,7 @@ export interface Settings {
   defaultQuality: 'hd' | 'sd';
   demoMode: boolean;
   recording: RecordingSettings;
+  motion: { enabled: boolean; notify: boolean; retentionDays: number };
 }
 
 export interface RecordingSettings {
@@ -65,6 +70,7 @@ export interface RecordingSettings {
   retentionDays: number;
   maxGb: number;
   segmentMinutes: 5 | 10 | 15 | 30 | 60;
+  mode: 'continuous' | 'motion';
 }
 
 export interface RecordingStatus {
@@ -118,3 +124,21 @@ export interface XiaomiDevice {
 
 /** What the browser itself observes for a tile — the only source of truth for "LIVE". */
 export type TileState = 'connecting' | 'live' | 'stalled' | 'offline';
+
+export interface MotionEvent {
+  id: string;
+  camera: string;
+  start: string;
+  end: string;
+  peak: number;
+  box: [number, number, number, number] | null;
+  thumb: boolean;
+}
+
+export interface Alert {
+  seq: number;
+  id: string;
+  camera: string;
+  name: string;
+  start: string;
+}

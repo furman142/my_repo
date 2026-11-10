@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
 import type { Route } from '../lib/router';
-import type { Segment, SystemStatus } from '../lib/types';
+import { takeJump, type Jump } from '../lib/jump';
+import type { MotionEvent, Segment, SystemStatus } from '../lib/types';
 import { cn, formatBytes } from '../lib/util';
 
 const DAY_S = 24 * 3600;
@@ -26,6 +27,8 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
   const [loading, setLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekTo = useRef<number | null>(null);
+  const jump = useRef<Jump | null>(takeJump());
+  const [events, setEvents] = useState<MotionEvent[]>([]);
 
   const names = useMemo(() => Object.fromEntries(status.cameras.map((c) => [c.id, c.name])), [status.cameras]);
   const recordingOn = Object.keys(status.recording ?? {}).length > 0;
@@ -33,6 +36,12 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
   const loadDays = useCallback(async () => {
     const d = await api<Record<string, string[]>>('/api/recordings/days');
     setDays(d);
+    const j = jump.current;
+    if (j && d[j.camera]) {
+      setCamera(j.camera);
+      setDate(j.date);
+      return;
+    }
     setCamera((c) => (c && d[c] ? c : Object.keys(d)[0] ?? null));
   }, []);
   useEffect(() => {
@@ -48,7 +57,12 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
     if (!camera || !date) return;
     setLoading(true);
     try {
-      setSegments(await api<Segment[]>(`/api/recordings/list?camera=${camera}&date=${date}`));
+      const [segs, ev] = await Promise.all([
+        api<Segment[]>(`/api/recordings/list?camera=${camera}&date=${date}`),
+        api<{ events: MotionEvent[] }>(`/api/events?date=${date}&camera=${camera}`).catch(() => ({ events: [] as MotionEvent[] })),
+      ]);
+      setSegments(segs);
+      setEvents(ev.events);
     } finally {
       setLoading(false);
     }
@@ -59,6 +73,19 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
     const t = window.setInterval(loadSegments, 30_000); // today's list keeps growing
     return () => window.clearInterval(t);
   }, [loadSegments]);
+
+  // Coming from the Events page: open the segment that covers the event.
+  useEffect(() => {
+    const j = jump.current;
+    if (!j || j.camera !== camera || j.date !== date || segments.length === 0) return;
+    jump.current = null;
+    const t = j.at.getTime();
+    const i = segments.findIndex((s) => !s.inProgress && t >= new Date(s.start).getTime() && t < new Date(s.start).getTime() + (s.seconds ?? 600) * 1000);
+    if (i >= 0) {
+      seekTo.current = (t - new Date(segments[i].start).getTime()) / 1000;
+      setCurrent(i);
+    }
+  }, [segments, camera, date]);
 
   const seg = current !== null ? segments[current] : null;
   const playable = segments.map((s, i) => ({ s, i })).filter(({ s }) => !s.inProgress);
@@ -164,6 +191,14 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
               />
             );
           })}
+          {events.map((e) => (
+            <div
+              key={e.id}
+              className="pointer-events-none absolute top-0 h-1.5 w-1 rounded-b bg-warn"
+              style={{ left: `${(secOfDay(new Date(e.start)) / DAY_S) * 100}%` }}
+              title={`תנועה ${hms(new Date(e.start))}`}
+            />
+          ))}
           {[3, 6, 9, 12, 15, 18, 21].map((h) => (
             <div key={h} className="pointer-events-none absolute inset-y-0 w-px bg-ink-600/60" style={{ left: `${(h / 24) * 100}%` }} />
           ))}
@@ -256,7 +291,7 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
             ))}
         </div>
       </div>
-      <p className="mt-3 text-xs text-ink-400">ההקלטות כוללות וידאו בלבד: go2rtc שומר MP4 עם H.264/H.265 ו-AAC, ואודיו Opus של מצלמות Xiaomi לא נשמר.</p>
+      <p className="mt-3 text-xs text-ink-400"><span className="inline-block h-2 w-1 rounded-b bg-warn align-middle" /> סימון כתום בראש ציר הזמן = אירוע תנועה. ההקלטות כוללות וידאו בלבד: go2rtc שומר MP4 עם H.264/H.265 ו-AAC, ואודיו Opus של מצלמות Xiaomi לא נשמר.</p>
     </>
   );
 }

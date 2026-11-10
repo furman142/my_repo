@@ -9,6 +9,10 @@ import { registerApiRoutes } from './routes/api.js';
 import { registerStreamRoutes } from './routes/stream.js';
 import { registerRecordingRoutes } from './routes/recordings.js';
 import { recordings } from './recordings/recorder.js';
+import { registerEventRoutes, onAlert, type Alert } from './routes/events.js';
+import { registerStatsRoutes } from './routes/stats.js';
+import { registerAccessRoutes } from './routes/access.js';
+import { motion } from './motion/service.js';
 import { registerSecurity } from './security/auth.js';
 import { redact } from './security/redact.js';
 import { ensureDataDir, loadSecrets } from './security/secrets.js';
@@ -19,12 +23,16 @@ export interface StartOptions {
   fallbackToFreePort?: boolean;
   /** Pino log destination file (desktop app); stdout when omitted. */
   logFile?: string;
+  /** Called when the user asks to restart (e.g. after changing phone access). */
+  restart?: () => void;
 }
 
 export interface RunningServer {
   url: string;
   port: number;
   go2rtc: { url: string; username: string; password: string };
+  /** Subscribe to motion alerts (desktop notifications). Returns an unsubscribe function. */
+  onAlert: (fn: (a: Alert) => void) => () => void;
   stop: () => Promise<void>;
 }
 
@@ -55,6 +63,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   registerApiRoutes(app);
   registerStreamRoutes(app);
   registerRecordingRoutes(app);
+  registerEventRoutes(app);
+  registerStatsRoutes(app);
+  registerAccessRoutes(app, { restart: opts.restart });
 
   if (webDistExists()) {
     await app.register(fastifyStatic, { root: config.webDist, maxAge: '1h' });
@@ -84,7 +95,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     await app.listen({ host: config.host, port: 0 });
   }
   const port = (app.server.address() as AddressInfo).port;
+  recordings.attachMotion(motion);
   void recordings.start();
+  motion.start();
 
   const shown = isLoopback(config.host) ? `http://127.0.0.1:${port}` : `http://<this-computer-ip>:${port}`;
   app.log.info(`SENTINEL ready at ${shown}  (go2rtc: ${manager.state}, login: ${config.loginRequired ? 'on' : 'off'})`);
@@ -97,7 +110,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     url: `http://127.0.0.1:${port}`,
     port,
     go2rtc: { url: `http://127.0.0.1:${config.go2rtc.apiPort}`, username: secrets.go2rtcUser, password: secrets.go2rtcPassword },
+    onAlert,
     async stop() {
+      motion.stop();
       await recordings.stop();
       await manager.stop();
       await app.close();

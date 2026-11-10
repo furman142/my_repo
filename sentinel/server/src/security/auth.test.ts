@@ -47,3 +47,11 @@ test('login throttling kicks in after 5 failures', () => {
   auth.clearLoginFailures(ip);
   assert.equal(auth.loginThrottled(ip), false);
 });
+
+test('scrypt password hashes verify and reject', () => {
+  const h = auth.hashPassword('correct horse battery');
+  assert.match(h, /^scrypt\$/);
+  assert.equal(auth.verifyHash('correct horse battery', h), true);
+  assert.equal(auth.verifyHash('wrong password!!', h), false);
+  assert.notEqual(auth.hashPassword('correct horse battery'), h, 'salted');
+});

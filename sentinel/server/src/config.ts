@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -29,10 +29,32 @@ export function isLoopback(host: string): boolean {
   return host === '127.0.0.1' || host === '::1' || host === 'localhost';
 }
 
-const host = process.env.SENTINEL_HOST?.trim() || '127.0.0.1';
-const password = process.env.SENTINEL_PASSWORD ?? '';
+const DATA_DIR = process.env.SENTINEL_DATA_DIR || path.join(ROOT, 'data');
 
-if (!isLoopback(host) && password.length < 10) {
+/**
+ * Phone/LAN access chosen in Settings (data/access.json). Environment variables, when set,
+ * always win (advanced / headless setups).
+ */
+export interface AccessFile {
+  lanEnabled?: boolean;
+  /** scrypt$<saltB64>$<hashB64> */
+  passwordHash?: string;
+}
+export const ACCESS_FILE = path.join(DATA_DIR, 'access.json');
+function readAccess(): AccessFile {
+  try {
+    return JSON.parse(readFileSync(ACCESS_FILE, 'utf8')) as AccessFile;
+  } catch {
+    return {};
+  }
+}
+const access = readAccess();
+const envHost = process.env.SENTINEL_HOST?.trim();
+const host = envHost || (access.lanEnabled && access.passwordHash ? '0.0.0.0' : '127.0.0.1');
+const password = process.env.SENTINEL_PASSWORD ?? '';
+const passwordHash = password ? '' : (access.passwordHash ?? '');
+
+if (!isLoopback(host) && password.length < 10 && !passwordHash) {
   // Refuse to expose live home cameras to the network without a real password.
   throw new Error(
     `SENTINEL_HOST=${host} exposes the dashboard to your network. ` +
@@ -46,14 +68,18 @@ export const config = {
   host,
   port: int('SENTINEL_PORT', 8080),
   password,
+  /** Hashed password set from Settings (used when SENTINEL_PASSWORD is not set). */
+  passwordHash,
   /** Login is required whenever a password is configured. */
-  loginRequired: password.length > 0,
+  loginRequired: password.length > 0 || passwordHash.length > 0,
+  /** Host/password come from environment variables, so Settings cannot change them. */
+  accessFromEnv: !!envHost || password.length > 0,
   extraAllowedHosts: (process.env.SENTINEL_ALLOWED_HOSTS ?? '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
   envFile: ENV_FILE,
-  dataDir: process.env.SENTINEL_DATA_DIR || path.join(ROOT, 'data'),
+  dataDir: DATA_DIR,
   webDist: process.env.SENTINEL_WEB_DIST || path.join(ROOT, 'web', 'dist'),
   go2rtc: {
     bin: process.env.GO2RTC_BIN || path.join(ROOT, 'bin', binName),

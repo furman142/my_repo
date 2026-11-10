@@ -1,4 +1,4 @@
-import { Bell, Film, LayoutDashboard, Settings, Video } from 'lucide-react';
+import { BarChart3, Bell, Film, LayoutDashboard, Settings, Video } from 'lucide-react';
 import type { Route } from '../lib/router';
 import { cn } from '../lib/util';
 import { Logo } from './Logo';
@@ -7,7 +7,8 @@ export const NAV: Array<{ id: Route; label: string; icon: typeof Video; phase2?:
   { id: 'dashboard', label: 'לוח בקרה', icon: LayoutDashboard },
   { id: 'live', label: 'מצלמות חיות', icon: Video },
   { id: 'recordings', label: 'הקלטות', icon: Film },
-  { id: 'events', label: 'אירועים', icon: Bell, phase2: true },
+  { id: 'events', label: 'אירועים', icon: Bell },
+  { id: 'stats', label: 'סטטיסטיקה', icon: BarChart3 },
   { id: 'settings', label: 'הגדרות', icon: Settings },
 ];
 

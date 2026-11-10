@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import os from 'node:os';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config, isLoopback } from '../config.js';
@@ -33,7 +33,7 @@ export function hostnameOf(hostHeader: string | undefined): string {
 
 function sessionKey(): Buffer {
   // Changing SENTINEL_PASSWORD invalidates every existing session.
-  return createHash('sha256').update(loadSecrets().cookieSecret).update('\0').update(config.password).digest();
+  return createHash('sha256').update(loadSecrets().cookieSecret).update('\0').update(config.password || config.passwordHash).digest();
 }
 
 export function issueSession(now = Date.now()): string {
@@ -51,10 +51,28 @@ export function verifySession(value: string | undefined, now = Date.now()): bool
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+export function hashPassword(pw: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(pw, salt, 32, { N: 16384, r: 8, p: 1 });
+  return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+
+export function verifyHash(pw: string, stored: string): boolean {
+  const [kind, saltB64, hashB64] = stored.split('$');
+  if (kind !== 'scrypt' || !saltB64 || !hashB64) return false;
+  const expected = Buffer.from(hashB64, 'base64');
+  const got = scryptSync(pw, Buffer.from(saltB64, 'base64'), expected.length, { N: 16384, r: 8, p: 1 });
+  return timingSafeEqual(got, expected);
+}
+
 export function passwordMatches(candidate: string): boolean {
-  const a = createHash('sha256').update(candidate).digest();
-  const b = createHash('sha256').update(config.password).digest();
-  return config.password.length > 0 && timingSafeEqual(a, b);
+  if (config.password) {
+    const a = createHash('sha256').update(candidate).digest();
+    const b = createHash('sha256').update(config.password).digest();
+    return timingSafeEqual(a, b);
+  }
+  if (config.passwordHash) return verifyHash(candidate, config.passwordHash);
+  return false;
 }
 
 export function isAuthenticated(req: FastifyRequest): boolean {
@@ -85,7 +103,10 @@ export function registerSecurity(app: FastifyInstance) {
 
   app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
     // 1. Host header allow-list (DNS rebinding).
-    if (!hosts.has(hostnameOf(req.headers.host))) {
+    const hn = hostnameOf(req.headers.host);
+    // Tailscale MagicDNS names only resolve inside your own tailnet.
+    const tailnet = !isLoopback(config.host) && hn.endsWith('.ts.net');
+    if (!hosts.has(hn) && !tailnet) {
       return reply.code(421).send({ error: 'host not allowed' });
     }
 

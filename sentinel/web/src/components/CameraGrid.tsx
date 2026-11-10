@@ -37,7 +37,7 @@ export function CameraGrid({
     <div className={cn('grid gap-4', columns === 2 ? 'xl:grid-cols-2' : 'grid-cols-1')}>
       {status.cameras.map((c) => (
         <TileBoundary key={c.id} name={c.name}>
-          <CameraTile camera={c} defaultQuality={status.defaultQuality} transports={status.transports} recording={status.recording?.[c.id] === 'recording'} />
+          <CameraTile camera={c} defaultQuality={status.defaultQuality} transports={status.transports} recording={status.recording?.[c.id] === 'recording'} motion={!!status.motion?.[c.id]} />
         </TileBoundary>
       ))}
     </div>

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 
-export type Route = 'dashboard' | 'live' | 'recordings' | 'events' | 'settings';
+export type Route = 'dashboard' | 'live' | 'recordings' | 'events' | 'stats' | 'settings';
 
 const PATHS: Record<Route, string> = {
   dashboard: '/',
   live: '/live',
   recordings: '/recordings',
   events: '/events',
+  stats: '/stats',
   settings: '/settings',
 };
 
