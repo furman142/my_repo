@@ -21,7 +21,8 @@ import type { CameraStatus, TileState } from '../lib/types';
 import { cn, formatTime } from '../lib/util';
 
 const LIVE_WINDOW_MS = 3000; // a frame within the last 3 s = LIVE
-const STALL_RECONNECT_MS = 10_000; // no frames for 10 s = force a fresh connection
+const SOFT_RECOVER_MS = 2000; // playback stuck but data buffered ahead: jump to the live edge
+const STALL_RECONNECT_MS = 8000; // no frames for 8 s = force a fresh connection
 const OFFLINE_AFTER_MS = 20_000; // no frames for 20 s = OFFLINE
 
 type Quality = 'hd' | 'sd';
@@ -67,6 +68,7 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
     let lastFrameAt = 0;
     let lastVideoTime = -1;
     let lastReconnect = Date.now();
+    let lastSoftRecover = 0;
     let everLive = false;
     let rvfcHandle = 0;
     let disposed = false;
@@ -109,6 +111,18 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
 
       let next: TileState;
       const sinceFrame = lastFrameAt ? t - lastFrameAt : Infinity;
+
+      // Soft recovery (MSE): when a camera pans/tilts or re-keys, its timestamps can jump and
+      // leave a gap in the buffer. Video keeps arriving but playback sits in front of the gap.
+      // Jump to the newest buffered data instead of tearing the connection down.
+      if (everLive && sinceFrame > SOFT_RECOVER_MS && t - lastSoftRecover > SOFT_RECOVER_MS && v.buffered.length) {
+        const end = v.buffered.end(v.buffered.length - 1);
+        if (end - v.currentTime > 0.5) {
+          lastSoftRecover = t;
+          v.currentTime = Math.max(v.buffered.start(v.buffered.length - 1), end - 0.3);
+          void v.play().catch(() => {});
+        }
+      }
       if (sinceFrame < LIVE_WINDOW_MS) {
         next = 'live';
         everLive = true;
