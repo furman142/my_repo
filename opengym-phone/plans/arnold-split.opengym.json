@@ -1,25 +1,25 @@
 {
   "opengym_plan": 1,
   "exported": "2026-11-10",
-  "name": "Arnold Split (Golden Era, 6 days)",
+  "name": "Arnold Split (Golden Era, 6 days, Sun–Fri)",
   "unit": "kg",
   "week": {
-    "1": [
+    "0": [
       "arnold-chest-back"
+    ],
+    "1": [
+      "arnold-shoulders-arms"
     ],
     "2": [
-      "arnold-shoulders-arms"
-    ],
-    "3": [
       "arnold-legs"
     ],
-    "4": [
+    "3": [
       "arnold-chest-back"
     ],
-    "5": [
+    "4": [
       "arnold-shoulders-arms"
     ],
-    "6": [
+    "5": [
       "arnold-legs"
     ]
   },

@@ -60,7 +60,7 @@ want the real self-hosted server (to sync a laptop/tablet later, use the API, we
 ## Ready-made plans
 
 `plans/arnold-split.opengym.json` is the classic Arnold 6-day split (Chest & Back,
-Shoulders & Arms, Legs, twice a week, Sunday off) with 24 exercises from openGym's catalogue.
+Shoulders & Arms, Legs, twice a week, Sunday to Friday, Saturday off) with 24 exercises from openGym's catalogue.
 It works in the iPhone app, the Android app and the self-hosted web app:
 
 1. Save the file to your phone (Files app on iPhone).
