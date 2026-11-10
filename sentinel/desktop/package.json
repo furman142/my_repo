@@ -1,0 +1,84 @@
+{
+  "name": "sentinel-desktop",
+  "productName": "SENTINEL",
+  "version": "0.2.0",
+  "private": true,
+  "description": "SENTINEL Security Command Center — desktop app",
+  "author": "SENTINEL",
+  "license": "MIT",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "prepare-app": "node scripts/prepare.mjs",
+    "start": "npm run prepare-app && electron .",
+    "dev": "electron .",
+    "dist": "npm run prepare-app && electron-builder --publish never",
+    "dist:dir": "npm run prepare-app && electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.25.10"
+  },
+  "build": {
+    "appId": "local.sentinel.securitycenter",
+    "productName": "SENTINEL",
+    "copyright": "Personal use",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.mjs",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/server",
+        "to": "server"
+      },
+      {
+        "from": "build/web",
+        "to": "web"
+      },
+      {
+        "from": "build/bin",
+        "to": "bin"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "SENTINEL",
+      "artifactName": "SENTINEL-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "assets/icon.png",
+      "identity": "-",
+      "artifactName": "SENTINEL-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Video",
+      "icon": "assets/icon.png",
+      "artifactName": "SENTINEL-${version}-${arch}.${ext}",
+      "syncDesktopName": true
+    },
+    "publish": null
+  },
+  "desktopName": "sentinel.desktop"
+}

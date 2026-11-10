@@ -90,6 +90,9 @@ function Btn({
   );
 }
 
+/** Running inside the SENTINEL desktop app (Electron). */
+const isDesktopApp = navigator.userAgent.includes('Electron');
+
 const inputCls = 'rounded-lg border border-ink-600 bg-ink-850 px-3 py-1.5 text-sm text-ink-100 outline-none focus:border-signal';
 
 // ------------------------------------------------------------------------------------------
@@ -180,7 +183,11 @@ function SetupWizard({ onAdded }: { onAdded: () => void }) {
                 SENTINEL לא מבקש ולא רואה את סיסמת Xiaomi שלך. ההתחברות מתבצעת בממשק של go2rtc עצמו, שמדבר ישירות עם השרתים של Xiaomi (כולל קוד אימות ו-captcha אם יידרשו).
               </p>
               <ol className="list-decimal space-y-1 ps-5 text-ink-300">
-                <li>פתח במחשב הזה את ממשק go2rtc (הכפתור למטה). הדפדפן יבקש שם משתמש וסיסמה של go2rtc — הצג אותם כאן.</li>
+                {isDesktopApp ? (
+                  <li>לחץ "פתח את go2rtc" למטה. בגרסת הדסקטופ go2rtc נפתח בחלון נפרד, מחובר אוטומטית.</li>
+                ) : (
+                  <li>פתח במחשב הזה את ממשק go2rtc (הכפתור למטה). הדפדפן יבקש שם משתמש וסיסמה של go2rtc — הצג אותם כאן.</li>
+                )}
                 <li>
                   בתפריט העליון בחר <b>Add</b>, ואז גלול ל-<b>Xiaomi</b>.
                 </li>
@@ -193,9 +200,11 @@ function SetupWizard({ onAdded }: { onAdded: () => void }) {
                   <a href={state.go2rtcWebUi} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 rounded-lg bg-signal px-3 py-1.5 text-sm text-white hover:bg-blue-500">
                     פתח את go2rtc <ExternalLink className="h-3.5 w-3.5" />
                   </a>
-                  <Btn onClick={showCreds}>
-                    <KeyRound className="h-3.5 w-3.5" /> הצג פרטי כניסה ל-go2rtc
-                  </Btn>
+                  {!isDesktopApp && (
+                    <Btn onClick={showCreds}>
+                      <KeyRound className="h-3.5 w-3.5" /> הצג פרטי כניסה ל-go2rtc
+                    </Btn>
+                  )}
                 </div>
               ) : (
                 <p className="text-warn">השלב הזה אפשרי רק מהמחשב שמריץ את SENTINEL (go2rtc לא נגיש מהרשת, בכוונה).</p>

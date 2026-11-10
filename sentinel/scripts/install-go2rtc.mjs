@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 const VERSION = process.env.GO2RTC_VERSION || 'v1.9.15';
 const MIN_XIAOMI = [1, 9, 13];
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const BIN_DIR = path.join(ROOT, 'bin');
+// --out <dir>: install somewhere else (the desktop build bundles go2rtc into the app).
+const outIdx = process.argv.indexOf('--out');
+const BIN_DIR = outIdx > 0 ? path.resolve(process.argv[outIdx + 1]) : path.join(ROOT, 'bin');
 const isWin = process.platform === 'win32';
 const target = path.join(BIN_DIR, isWin ? 'go2rtc.exe' : 'go2rtc');
 

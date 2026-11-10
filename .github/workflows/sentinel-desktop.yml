@@ -1,0 +1,57 @@
+name: SENTINEL desktop installers
+
+# Builds the SENTINEL desktop app on real Windows, macOS and Linux machines and attaches the
+# installers to the run (Actions → this workflow → run → "Artifacts").
+on:
+  push:
+    paths:
+      - "sentinel/**"
+      - ".github/workflows/sentinel-desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: Windows, files: "sentinel/desktop/release/*.exe" }
+          - { os: macos-latest, name: macOS (Apple Silicon), files: "sentinel/desktop/release/*.dmg" }
+          - { os: ubuntu-latest, name: Linux, files: "sentinel/desktop/release/*.AppImage" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install SENTINEL (server + web)
+        working-directory: sentinel
+        run: npm ci
+
+      - name: Unit tests + typecheck
+        working-directory: sentinel
+        run: npm test
+
+      - name: Install desktop tooling (Electron)
+        working-directory: sentinel/desktop
+        run: npm ci
+
+      - name: Build installer
+        working-directory: sentinel/desktop
+        env:
+          # Unsigned personal build: do not look for signing certificates.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SENTINEL-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 30

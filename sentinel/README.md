@@ -8,7 +8,40 @@
 
 ---
 
-## הפעלה מהירה
+## אפליקציית דסקטופ (מומלץ)
+
+SENTINEL זמין כאפליקציה רגילה ל-Windows, ל-Mac ול-Linux. אין צורך בטרמינל, ב-Node.js או ב-`npm start`: האפליקציה מפעילה את go2rtc ואת השרת בעצמה ופותחת את לוח הבקרה בחלון משלה.
+
+**הורדה:** ב-GitHub נכנסים ל-**Actions ← SENTINEL desktop installers**, בוחרים את הריצה האחרונה (ירוקה), ותחת **Artifacts** מורידים:
+
+| מערכת | קובץ | התקנה |
+|---|---|---|
+| Windows | `SENTINEL-Windows` ← `SENTINEL-Setup-x.y.z.exe` | מריצים. ב-"Windows protected your PC" לוחצים **More info ← Run anyway**: האפליקציה לא חתומה בתעודה מסחרית. |
+| Mac (Apple Silicon) | `SENTINEL-macOS` ← `.dmg` | גוררים ל-Applications. בפתיחה הראשונה: **System Settings ← Privacy & Security ← Open Anyway**, או בטרמינל `xattr -cr /Applications/SENTINEL.app`. |
+| Linux | `SENTINEL-Linux` ← `.AppImage` | `chmod +x SENTINEL-*.AppImage` ואז מריצים. |
+
+**מה האפליקציה עושה:**
+- **חלון ייעודי** עם לוח הבקרה. כפתור "פתח את go2rtc" בהגדרות פותח את ממשק go2rtc בחלון נפרד שמחובר אוטומטית, בלי להקליד סיסמה.
+- **אייקון במגש המערכת.** סגירת החלון משאירה את SENTINEL רץ ברקע, והשידורים מושהים כדי לא למשוך וידאו מהמצלמות סתם. בתפריט האייקון: פתיחה, פתיחה בדפדפן, **"הפעל עם המחשב"**, הגדרות מתקדמות, תיקיית נתונים ויציאה מלאה.
+- **הפעלה עם המחשב** מופעלת אוטומטית בהתקנה הראשונה. האפליקציה עולה מוסתרת במגש, ואפשר לכבות את זה מהתפריט.
+- צילומי מסך נשמרים ישירות ב-`Pictures/SENTINEL`.
+- הנתונים (טוקן Xiaomi, הגדרות, לוגים) נשמרים בתיקיית המשתמש של האפליקציה. הנתיב פותח מתפריט המגש: `%APPDATA%\SENTINEL` ב-Windows, `~/Library/Application Support/SENTINEL` ב-Mac, `~/.config/SENTINEL` ב-Linux.
+- צפייה מהטלפון: בתפריט המגש ← "הגדרות מתקדמות (קובץ)", מגדירים `SENTINEL_HOST=0.0.0.0` ו-`SENTINEL_PASSWORD=...` ומפעילים מחדש.
+- **לא להריץ במקביל** את האפליקציה ואת `npm start`: שתיהן משתמשות באותו פורט של go2rtc.
+
+**בנייה עצמית** (במקום להוריד):
+```bash
+cd sentinel && npm install
+cd desktop && npm install
+npm start          # הרצה בלי התקנה
+npm run dist       # יוצר מתקין למערכת הנוכחית בתיקייה desktop/release
+```
+
+> ⚠️ H.265 באפליקציה: מנוע Chromium של Electron מפענח HEVC דרך פענוח החומרה של המערכת (Windows או Mac). זה לא נבדק מול C200 אמיתי. אם תצוגה נתקעת ב"מתחבר…", עברו ל-SD.
+
+---
+
+## הפעלה מהירה (בלי אפליקציה, מהטרמינל)
 
 דרישות: **Node.js 20 ומעלה**. בשביל מצב ההדגמה בלבד צריך גם **ffmpeg** (לא נדרש למצלמות עצמן).
 
@@ -139,6 +172,7 @@ sentinel/
 │  ├─ vendor/       video-rtc.js — הנגן הרשמי של go2rtc v1.9.15 (MIT), ללא שינוי
 │  └─ lib/          sentinel-video.ts (התאמות: בלי STUN, reconnect מהיר, אירועי שגיאה)
 ├─ scripts/         install-go2rtc · verify-cameras · autostart · credentials · dev
+├─ desktop/         אפליקציית Electron: main.mjs, אייקונים, electron-builder
 ├─ tests/           e2e-demo.cjs (Playwright, מצב הדגמה)
 ├─ bin/             go2rtc (מורד, מוחרג מ-Git)
 └─ data/            go2rtc.yaml, secrets.json, settings.json (מוחרג מ-Git)

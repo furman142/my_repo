@@ -7,7 +7,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 /** sentinel/ project root (works from src/ via tsx and from dist/ via node). */
 export const ROOT = path.resolve(here, '..', '..');
 
-dotenv.config({ path: path.join(ROOT, '.env'), quiet: true } as dotenv.DotenvConfigOptions);
+// The desktop app points these at its per-user folder (see desktop/main.mjs).
+const ENV_FILE = process.env.SENTINEL_ENV_FILE || path.join(ROOT, '.env');
+dotenv.config({ path: ENV_FILE, quiet: true } as dotenv.DotenvConfigOptions);
 
 function int(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -34,7 +36,7 @@ if (!isLoopback(host) && password.length < 10) {
   // Refuse to expose live home cameras to the network without a real password.
   throw new Error(
     `SENTINEL_HOST=${host} exposes the dashboard to your network. ` +
-      'Set SENTINEL_PASSWORD (at least 10 characters) in sentinel/.env first.',
+      `Set SENTINEL_PASSWORD (at least 10 characters) in ${ENV_FILE} first.`,
   );
 }
 
@@ -50,8 +52,9 @@ export const config = {
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
-  dataDir: path.join(ROOT, 'data'),
-  webDist: path.join(ROOT, 'web', 'dist'),
+  envFile: ENV_FILE,
+  dataDir: process.env.SENTINEL_DATA_DIR || path.join(ROOT, 'data'),
+  webDist: process.env.SENTINEL_WEB_DIST || path.join(ROOT, 'web', 'dist'),
   go2rtc: {
     bin: process.env.GO2RTC_BIN || path.join(ROOT, 'bin', binName),
     apiPort: int('GO2RTC_API_PORT', 1984),
