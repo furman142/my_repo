@@ -18,6 +18,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { NetDiagCard, isUdpTimeout } from '../components/NetDiagCard';
 import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
 import type { Camera, ProbeResult, Settings as SettingsT, SetupState, SystemStatus, XiaomiDevice } from '../lib/types';
@@ -39,6 +40,7 @@ export function Settings({ status, refresh, loginRequired }: { status: SystemSta
       <div className="grid max-w-5xl gap-5">
         <SetupWizard onAdded={reload} />
         {settings && <CamerasEditor settings={settings} onSaved={reload} />}
+        <NetDiagCard Card={Card} />
         {settings && <Preferences settings={settings} onSaved={reload} />}
         <SecurityCard status={status} loginRequired={loginRequired} />
       </div>
@@ -436,6 +438,11 @@ function ProbeView({ r }: { r: ProbeResult }) {
         {r.error && (
           <div className="break-all font-mono text-red-300/90" dir="ltr">
             {r.error}
+          </div>
+        )}
+        {isUdpTimeout(r.error) && (
+          <div className="text-warn">
+            המצלמה לא ענתה ברשת המקומית. ברוב המקרים זו חומת האש של Windows או רשת שונה — הרץ "אבחון חיבור למצלמות" למטה.
           </div>
         )}
       </div>

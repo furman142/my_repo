@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { cameraStatuses } from '../cameras/service.js';
 import { XIAOMI_REGIONS, modelInfo, parseXiaomiSource } from '../cameras/models.js';
 import { probeStream } from '../cameras/probe.js';
+import { fixWindowsFirewall, runNetDiag } from '../system/netdiag.js';
 import { go2rtc, Go2rtcError } from '../go2rtc/client.js';
 import { manager } from '../go2rtc/manager.js';
 import {
@@ -263,6 +264,26 @@ export function registerApiRoutes(app: FastifyInstance) {
     if (!cam && !demo) return reply.code(404).send({ error: 'לא נמצא' });
     const stream = demo ? req.params.id : req.query.quality === 'sd' && cam!.streamSd ? cam!.streamSd : cam!.stream;
     return probeStream(stream);
+  });
+
+  // ---------- network diagnostics (camera P2P connection) ----------
+  app.get('/api/system/netdiag', async (req, reply) => {
+    if (!isLoopbackIp(req.ip)) return reply.code(403).send({ error: 'זמין רק מהמחשב שמריץ את SENTINEL' });
+    return runNetDiag();
+  });
+
+  app.post<{ Body: { makePrivate?: unknown } }>('/api/system/firewall/fix', async (req, reply) => {
+    if (!isLoopbackIp(req.ip)) return reply.code(403).send({ error: 'זמין רק מהמחשב שמריץ את SENTINEL' });
+    if (process.platform !== 'win32') return reply.code(400).send({ error: 'Windows only' });
+    // Only interfaces that Windows currently reports as Public may be switched to Private.
+    const wanted = Array.isArray(req.body?.makePrivate) ? req.body.makePrivate.filter((x): x is string => typeof x === 'string') : [];
+    let allowed: string[] = [];
+    if (wanted.length) {
+      const diag = await runNetDiag();
+      const publicIfaces = new Set((diag.firewall?.profiles ?? []).filter((p) => p.category === 'Public').map((p) => p.iface));
+      allowed = wanted.filter((w) => publicIfaces.has(w));
+    }
+    return fixWindowsFirewall(allowed);
   });
 
   app.post('/api/system/go2rtc/restart', async () => {
