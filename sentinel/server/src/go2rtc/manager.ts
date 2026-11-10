@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import type { FastifyBaseLogger } from 'fastify';
@@ -64,15 +64,29 @@ function writeOverrideConfig(): void {
   writePrivate(overridePath(), JSON.stringify(override, null, 2));
 }
 
+/**
+ * go2rtc edits this file itself (Xiaomi login, PUT /api/streams) with a line-based YAML patcher
+ * that cannot add keys under an empty flow mapping such as `streams: {}` — it fails with
+ * "yaml: line N: did not find expected key". So the file starts with comments only, and files
+ * created by earlier SENTINEL versions are repaired on startup.
+ */
+export function repairUserConfig(text: string): string {
+  return text.replace(/^streams:[ \t]*\{[ \t]*\}[ \t]*\r?\n?/m, '');
+}
+
 function ensureUserConfig(): void {
-  if (existsSync(paths.go2rtcConfig)) return;
+  if (existsSync(paths.go2rtcConfig)) {
+    const text = readFileSync(paths.go2rtcConfig, 'utf8');
+    const fixed = repairUserConfig(text);
+    if (fixed !== text) writePrivate(paths.go2rtcConfig, fixed);
+    return;
+  }
   writePrivate(
     paths.go2rtcConfig,
     [
       '# go2rtc configuration owned by you and by the go2rtc WebUI.',
       '# The Xiaomi login (Add > Xiaomi) stores its token here. NEVER commit this file.',
       '# Security settings (api/webrtc/rtsp) are enforced by SENTINEL in go2rtc.sentinel.yaml.',
-      'streams: {}',
       '',
     ].join('\n'),
   );
