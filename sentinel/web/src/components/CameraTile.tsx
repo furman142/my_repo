@@ -260,6 +260,13 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
             {camera.compat === 'unverified' && ' · unverified model'}
           </p>
         </div>
+        <div
+          className={cn('shrink-0 text-center leading-tight', drops > 0 ? 'text-warn' : 'text-ink-400')}
+          title="כמה פעמים השידור נפל וחזר מאז שהמסך נפתח"
+        >
+          <div className="font-mono text-sm font-semibold tabular-nums">{drops}</div>
+          <div className="text-[9px]">ניתוקים</div>
+        </div>
         <StateBadge state={state} demo={camera.demo} />
       </header>
 
@@ -360,7 +367,7 @@ export function CameraTile({ camera, defaultQuality, transports }: Props) {
           <span className="flex-1 truncate px-1 text-left font-mono text-[10px] text-ink-300" dir="ltr">
             {transport !== 'none' && transport.toUpperCase()}
             {resolution && ` · ${resolution}`}
-            {drops > 0 && <span className="text-warn">{` · ${drops} drop${drops > 1 ? 's' : ''}`}</span>}
+
           </span>
 
           <CtrlButton label="צילום תמונה" onClick={snapshot} disabled={!isLive}>

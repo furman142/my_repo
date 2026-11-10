@@ -4,9 +4,9 @@
  *    model-specific default quality (3 = 1080p).
  *  - The "Known Xiaomi cameras" list (github.com/AlexxIT/go2rtc/issues/1982) reports the
  *    C200 (2023, chuangmi.camera.046c04) as working: cs2+tcp, HEVC + Opus, 1920x1080 / 640x360.
- *  - The Xiaomi Outdoor Camera CW300 is NOT on that list (CW100, CW400, CW500, CW700S and AW300
- *    are). Its model id is not documented by go2rtc, so we never guess it: SENTINEL reads the
- *    real model id from your Xiaomi account during discovery.
+ *  - The Xiaomi Outdoor Camera CW300 is NOT on that list. Its model id was read from a real account
+ *    during discovery (mxiang.camera.moc006) and live video was confirmed with SENTINEL + go2rtc
+ *    v1.9.15 on 2026-11-10.
  */
 export type Compat = 'confirmed' | 'unverified';
 
@@ -17,6 +17,11 @@ export interface ModelInfo {
 }
 
 const KNOWN: Record<string, ModelInfo> = {
+  'mxiang.camera.moc006': {
+    product: 'Xiaomi Outdoor Camera CW300',
+    compat: 'confirmed',
+    note: 'נבדק בפועל עם SENTINEL ו-go2rtc v1.9.15: שידור חי עובד. הדגם עדיין לא מופיע ברשימת המצלמות של go2rtc.',
+  },
   'chuangmi.camera.046c04': {
     product: 'Xiaomi Smart Camera C200',
     compat: 'confirmed',
