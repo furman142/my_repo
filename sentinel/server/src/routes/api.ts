@@ -1,0 +1,279 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { config } from '../config.js';
+import { cameraStatuses } from '../cameras/service.js';
+import { XIAOMI_REGIONS, modelInfo, parseXiaomiSource } from '../cameras/models.js';
+import { probeStream } from '../cameras/probe.js';
+import { go2rtc, Go2rtcError } from '../go2rtc/client.js';
+import { manager } from '../go2rtc/manager.js';
+import {
+  SESSION_COOKIE,
+  clearLoginFailures,
+  isAuthenticated,
+  issueSession,
+  loginThrottled,
+  passwordMatches,
+  recordLoginFailure,
+} from '../security/auth.js';
+import { redact } from '../security/redact.js';
+import { loadSecrets } from '../security/secrets.js';
+import { CAMERA_ID, getSettings, saveSettings, type Camera } from '../settings/store.js';
+
+const isLoopbackIp = (ip: string) => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
+function errMsg(err: unknown): string {
+  if (err instanceof Go2rtcError) return err.message;
+  return redact(String((err as Error)?.message ?? err));
+}
+
+export function registerApiRoutes(app: FastifyInstance) {
+  // ---------- health & auth ----------
+  app.get('/api/health', async () => ({ ok: true }));
+
+  app.get('/api/auth/state', async (req) => ({
+    loginRequired: config.loginRequired,
+    authenticated: isAuthenticated(req),
+  }));
+
+  app.post<{ Body: { password?: string } }>('/api/auth/login', async (req, reply) => {
+    if (!config.loginRequired) return { ok: true };
+    if (loginThrottled(req.ip)) return reply.code(429).send({ error: 'יותר מדי ניסיונות. נסה שוב בעוד 15 דקות.' });
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!passwordMatches(password)) {
+      recordLoginFailure(req.ip);
+      return reply.code(401).send({ error: 'סיסמה שגויה' });
+    }
+    clearLoginFailures(req.ip);
+    reply.setCookie(SESSION_COOKIE, issueSession(), {
+      httpOnly: true,
+      sameSite: 'strict',
+      path: '/',
+      secure: req.protocol === 'https',
+      maxAge: 30 * 24 * 3600,
+    });
+    return { ok: true };
+  });
+
+  app.post('/api/auth/logout', async (_req, reply) => {
+    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    return { ok: true };
+  });
+
+  // ---------- status ----------
+  app.get('/api/status', async () => {
+    const { go2rtcReachable, cameras } = await cameraStatuses();
+    let version: string | null = null;
+    if (go2rtcReachable) {
+      try {
+        version = (await go2rtc.info()).version ?? null;
+      } catch {
+        /* ignore */
+      }
+    }
+    return {
+      time: new Date().toISOString(),
+      go2rtc: {
+        state: go2rtcReachable ? 'running' : manager.state,
+        managed: config.go2rtc.manage,
+        version,
+        lastExit: manager.lastExit,
+      },
+      /** Which browser transports the player may use. */
+      transports: config.go2rtc.webrtc ? 'webrtc,mse,hls' : 'mse,hls',
+      demoMode: getSettings().demoMode,
+      defaultQuality: getSettings().defaultQuality,
+      cameras,
+    };
+  });
+
+  // ---------- settings (names, order, quality, demo) ----------
+  app.get('/api/settings', async () => getSettings());
+
+  const settingsPatch = z.object({
+    cameras: z
+      .array(
+        z.object({
+          id: z.string().regex(CAMERA_ID),
+          name: z.string().trim().min(1).max(40),
+          location: z.enum(['indoor', 'outdoor']),
+          enabled: z.boolean(),
+        }),
+      )
+      .optional(),
+    defaultQuality: z.enum(['hd', 'sd']).optional(),
+    demoMode: z.boolean().optional(),
+  });
+
+  app.put('/api/settings', async (req, reply) => {
+    const parsed = settingsPatch.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'הגדרות לא תקינות', details: parsed.error.issues });
+    const cur = getSettings();
+    const next = { ...cur };
+    if (parsed.data.cameras) {
+      // Only display fields are editable here; stream wiring comes from setup.
+      const byId = new Map(cur.cameras.map((c) => [c.id, c]));
+      const reordered: Camera[] = [];
+      for (const patch of parsed.data.cameras) {
+        const existing = byId.get(patch.id);
+        if (!existing) return reply.code(400).send({ error: `מצלמה לא קיימת: ${patch.id}` });
+        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled });
+        byId.delete(patch.id);
+      }
+      next.cameras = [...reordered, ...byId.values()];
+    }
+    if (parsed.data.defaultQuality) next.defaultQuality = parsed.data.defaultQuality;
+    if (parsed.data.demoMode !== undefined) next.demoMode = parsed.data.demoMode;
+    return saveSettings(next);
+  });
+
+  // ---------- setup: Xiaomi discovery through go2rtc ----------
+  app.get('/api/setup/state', async (req) => {
+    let accounts: string[] = [];
+    let reachable = false;
+    try {
+      accounts = (await go2rtc.xiaomiAccounts()) ?? [];
+      reachable = true;
+    } catch {
+      /* go2rtc down */
+    }
+    return {
+      go2rtcState: reachable ? 'running' : manager.state,
+      go2rtcBinary: config.go2rtc.bin,
+      xiaomiAccounts: accounts.length,
+      go2rtcWebUi: `http://127.0.0.1:${config.go2rtc.apiPort}/`,
+      fromThisComputer: isLoopbackIp(req.ip),
+      cameras: getSettings().cameras.length,
+    };
+  });
+
+  /** go2rtc WebUI credentials — only revealed to a browser on this very computer. */
+  app.get('/api/setup/go2rtc-credentials', async (req, reply) => {
+    if (!isLoopbackIp(req.ip)) return reply.code(403).send({ error: 'זמין רק מהמחשב שמריץ את SENTINEL' });
+    const s = loadSecrets();
+    return { url: `http://127.0.0.1:${config.go2rtc.apiPort}/`, username: s.go2rtcUser, password: s.go2rtcPassword };
+  });
+
+  app.get<{ Querystring: { region?: string } }>('/api/setup/xiaomi/devices', async (req, reply) => {
+    const region = req.query.region ?? 'all';
+    const regions = region === 'all' ? [...XIAOMI_REGIONS] : XIAOMI_REGIONS.filter((r) => r === region);
+    if (!regions.length) return reply.code(400).send({ error: 'אזור לא תקין' });
+    let accounts: string[];
+    try {
+      accounts = (await go2rtc.xiaomiAccounts()) ?? [];
+    } catch (err) {
+      return reply.code(502).send({ error: `go2rtc לא זמין: ${errMsg(err)}` });
+    }
+    if (!accounts.length) return reply.code(409).send({ error: 'אין עדיין חשבון Xiaomi מחובר ב-go2rtc' });
+
+    const configured = getSettings().cameras;
+    const devices: unknown[] = [];
+    const errors: string[] = [];
+    await Promise.all(
+      accounts.flatMap((account) =>
+        regions.map(async (r) => {
+          try {
+            const res = await go2rtc.xiaomiDevices(account, r);
+            for (const s of res?.sources ?? []) {
+              const p = parseXiaomiSource(s.url);
+              if (!p) continue;
+              const info = modelInfo(p.model);
+              devices.push({
+                name: s.name,
+                region: r,
+                ip: p.ip,
+                model: p.model,
+                product: info.product,
+                compat: info.compat,
+                compatNote: info.note,
+                source: s.url,
+                added: configured.some((c) => c.did === p.did),
+              });
+            }
+          } catch (err) {
+            // 404 "no sources" just means: no cameras in that region.
+            if (!(err instanceof Go2rtcError && err.status === 404)) errors.push(`${r}: ${errMsg(err)}`);
+          }
+        }),
+      ),
+    );
+    return { devices, errors };
+  });
+
+  const addCamera = z.object({
+    source: z.string().max(300),
+    name: z.string().trim().min(1).max(40),
+    id: z.string().regex(CAMERA_ID).optional(),
+    location: z.enum(['indoor', 'outdoor']).default('indoor'),
+  });
+
+  app.post('/api/setup/cameras', async (req, reply) => {
+    const parsed = addCamera.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'נתונים לא תקינים' });
+    const src = parseXiaomiSource(parsed.data.source);
+    if (!src) return reply.code(400).send({ error: 'מקור לא תקין: מותרים רק מקורות xiaomi:// שהתקבלו מ-go2rtc' });
+
+    const settings = getSettings();
+    const id = parsed.data.id ?? uniqueId(parsed.data.location === 'outdoor' ? 'outdoor' : 'indoor', settings.cameras);
+    if (settings.cameras.some((c) => c.id === id)) return reply.code(409).send({ error: 'מזהה המצלמה כבר קיים' });
+    if (settings.cameras.some((c) => c.did === src.did)) return reply.code(409).send({ error: 'המצלמה הזו כבר נוספה' });
+    const info = modelInfo(src.model);
+
+    try {
+      await go2rtc.putStream(id, parsed.data.source);
+      // Documented go2rtc option: subtype=hd/sd/auto/0-5
+      await go2rtc.putStream(`${id}_sd`, `${parsed.data.source}&subtype=sd`);
+    } catch (err) {
+      return reply.code(502).send({ error: `go2rtc דחה את המקור: ${errMsg(err)}` });
+    }
+    const camera: Camera = {
+      id,
+      name: parsed.data.name,
+      model: src.model,
+      did: src.did,
+      product: info.product,
+      location: parsed.data.location,
+      stream: id,
+      streamSd: `${id}_sd`,
+      enabled: true,
+    };
+    saveSettings({ ...settings, cameras: [...settings.cameras, camera] });
+    return camera;
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/setup/cameras/:id', async (req, reply) => {
+    const settings = getSettings();
+    const cam = settings.cameras.find((c) => c.id === req.params.id);
+    if (!cam) return reply.code(404).send({ error: 'לא נמצא' });
+    for (const s of [cam.stream, cam.streamSd]) {
+      if (!s) continue;
+      try {
+        await go2rtc.deleteStream(s);
+      } catch {
+        /* already gone */
+      }
+    }
+    saveSettings({ ...settings, cameras: settings.cameras.filter((c) => c.id !== cam.id) });
+    return { ok: true };
+  });
+
+  // ---------- real connection test ----------
+  app.post<{ Params: { id: string }; Querystring: { quality?: string } }>('/api/cameras/:id/probe', async (req, reply) => {
+    const cam = getSettings().cameras.find((c) => c.id === req.params.id);
+    const demo = getSettings().demoMode && req.params.id.startsWith('sentinel_demo_');
+    if (!cam && !demo) return reply.code(404).send({ error: 'לא נמצא' });
+    const stream = demo ? req.params.id : req.query.quality === 'sd' && cam!.streamSd ? cam!.streamSd : cam!.stream;
+    return probeStream(stream);
+  });
+
+  app.post('/api/system/go2rtc/restart', async () => {
+    await manager.restart();
+    return { state: manager.state };
+  });
+}
+
+function uniqueId(base: string, cams: Camera[]): string {
+  if (!cams.some((c) => c.id === base)) return base;
+  for (let i = 2; i < 100; i++) if (!cams.some((c) => c.id === `${base}${i}`)) return `${base}${i}`;
+  return `${base}_${Date.now() % 100000}`;
+}
+

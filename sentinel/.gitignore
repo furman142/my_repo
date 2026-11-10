@@ -1,0 +1,10 @@
+node_modules/
+dist/
+# Runtime data: Xiaomi tokens (go2rtc.yaml), secrets, settings, snapshots — NEVER commit
+data/*
+!data/.gitkeep
+# Downloaded go2rtc binary
+bin/*
+!bin/.gitkeep
+.env
+*.log
