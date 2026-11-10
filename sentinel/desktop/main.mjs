@@ -292,6 +292,8 @@ app.on('window-all-closed', () => {
 });
 
 app.whenReady().then(async () => {
+  // Drop pages cached by an older version (updates replace the dashboard files).
+  await session.defaultSession.clearCache();
   // Media/camera/microphone/location etc. are never needed by the dashboard.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'fullscreen'));
   // Snapshots go straight to Pictures/SENTINEL.

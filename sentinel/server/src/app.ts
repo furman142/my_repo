@@ -68,7 +68,15 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   registerAccessRoutes(app, { restart: opts.restart });
 
   if (webDistExists()) {
-    await app.register(fastifyStatic, { root: config.webDist, maxAge: '1h' });
+    await app.register(fastifyStatic, {
+      root: config.webDist,
+      cacheControl: false,
+      // index.html must never be cached: after an update it points to new asset files.
+      // Asset file names contain a content hash, so they can be cached forever.
+      setHeaders: (res, filePath) => {
+        res.setHeader('Cache-Control', /[\\/]assets[\\/]/.test(filePath) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
     // SPA fallback
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/') || req.url.startsWith('/assets/')) return reply.code(404).send({ error: 'not found' });
