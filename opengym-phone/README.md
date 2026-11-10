@@ -56,3 +56,14 @@ openGym also ships an official Android APK that runs **fully on the phone with n
 all** (pick "On this phone only" on first launch):
 <https://github.com/DuarteSantos8/openGym/releases/latest>. Use the Termux setup above if you
 want the real self-hosted server (to sync a laptop/tablet later, use the API, webhooks, etc.).
+
+## Ready-made plans
+
+`plans/arnold-split.opengym.json` is the classic Arnold 6-day split (Chest & Back,
+Shoulders & Arms, Legs, twice a week, Sunday off) with 24 exercises from openGym's catalogue.
+It works in the iPhone app, the Android app and the self-hosted web app:
+
+1. Save the file to your phone (Files app on iPhone).
+2. In openGym: **Plan** tab → share icon (top right) → **Import a plan file** → pick it.
+3. Choose whether to apply its weekly schedule. The routines arrive as normal routines,
+   so you can edit sets, reps and exercises, or swap anything, afterwards.

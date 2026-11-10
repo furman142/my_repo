@@ -1,0 +1,194 @@
+{
+  "opengym_plan": 1,
+  "exported": "2026-11-10",
+  "name": "Arnold Split (Golden Era, 6 days)",
+  "unit": "kg",
+  "week": {
+    "1": [
+      "arnold-chest-back"
+    ],
+    "2": [
+      "arnold-shoulders-arms"
+    ],
+    "3": [
+      "arnold-legs"
+    ],
+    "4": [
+      "arnold-chest-back"
+    ],
+    "5": [
+      "arnold-shoulders-arms"
+    ],
+    "6": [
+      "arnold-legs"
+    ]
+  },
+  "routines": [
+    {
+      "id": "arnold-chest-back",
+      "name": "Arnold · Chest & Back",
+      "emoji": "barbell",
+      "ex": [
+        {
+          "id": "0025",
+          "sets": 4,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0047",
+          "sets": 4,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0308",
+          "sets": 3,
+          "reps": 12,
+          "restSec": 90
+        },
+        {
+          "id": "0073",
+          "sets": 3,
+          "reps": 12,
+          "restSec": 90
+        },
+        {
+          "id": "1429",
+          "sets": 4,
+          "reps": 8,
+          "restSec": 90
+        },
+        {
+          "id": "0027",
+          "sets": 4,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0293",
+          "sets": 3,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0032",
+          "sets": 3,
+          "reps": 8,
+          "restSec": 150
+        }
+      ]
+    },
+    {
+      "id": "arnold-shoulders-arms",
+      "name": "Arnold · Shoulders & Arms",
+      "emoji": "barbell",
+      "ex": [
+        {
+          "id": "0091",
+          "sets": 4,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "2137",
+          "sets": 3,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0334",
+          "sets": 4,
+          "reps": 12,
+          "restSec": 60
+        },
+        {
+          "id": "0380",
+          "sets": 3,
+          "reps": 12,
+          "restSec": 60
+        },
+        {
+          "id": "0031",
+          "sets": 4,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0318",
+          "sets": 3,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0030",
+          "sets": 4,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0061",
+          "sets": 3,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0333",
+          "sets": 3,
+          "reps": 12,
+          "restSec": 60
+        }
+      ]
+    },
+    {
+      "id": "arnold-legs",
+      "name": "Arnold · Legs",
+      "emoji": "legs",
+      "ex": [
+        {
+          "id": "0043",
+          "sets": 5,
+          "reps": 10,
+          "restSec": 150
+        },
+        {
+          "id": "0054",
+          "sets": 3,
+          "reps": 12,
+          "restSec": 90
+        },
+        {
+          "id": "0585",
+          "sets": 3,
+          "reps": 12,
+          "restSec": 60
+        },
+        {
+          "id": "0586",
+          "sets": 4,
+          "reps": 12,
+          "restSec": 60
+        },
+        {
+          "id": "0085",
+          "sets": 3,
+          "reps": 10,
+          "restSec": 90
+        },
+        {
+          "id": "0605",
+          "sets": 5,
+          "reps": 15,
+          "restSec": 45
+        },
+        {
+          "id": "0472",
+          "sets": 3,
+          "reps": 15,
+          "restSec": 60
+        }
+      ]
+    }
+  ],
+  "customEx": []
+}
