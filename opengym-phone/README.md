@@ -20,7 +20,7 @@ whole thing runs on Termux's plain Node.js.
 2. In Termux:
    ```bash
    pkg install -y git
-   git clone https://github.com/furman142/my_repo.git
+   git clone -b claude/affectionate-keller-9sy9u1 https://github.com/furman142/my_repo.git
    bash my_repo/opengym-phone/install.sh
    ~/.opengym/start.sh
    ```
