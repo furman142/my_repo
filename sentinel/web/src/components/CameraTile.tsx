@@ -1,10 +1,14 @@
 import {
+  Activity,
   Camera as CameraIcon,
   Home,
+  LayoutGrid,
   Loader2,
   Maximize2,
+  Mic,
   Minimize2,
   RefreshCw,
+  Scan,
   Trees,
   Volume2,
   VolumeX,
@@ -17,6 +21,7 @@ import { streamWsUrl } from '../lib/api';
 // Side-effect import registers the <sentinel-video> custom element.
 import '../lib/sentinel-video';
 import type { SentinelVideo, Transport } from '../lib/sentinel-video';
+import { TalkSession, micAvailable, type TalkState } from '../lib/talk';
 import type { CameraStatus, TileState } from '../lib/types';
 import { cn, formatTime } from '../lib/util';
 
@@ -36,9 +41,16 @@ interface Props {
   recording?: boolean;
   /** Local motion detection reports movement right now. */
   motion?: boolean;
+  /** Two-way audio is enabled in Settings. */
+  talkEnabled?: boolean;
+  /** Small tile (side strip in focus layout): name + essential buttons only. */
+  compact?: boolean;
+  focused?: boolean;
+  /** Toggle the focus (spotlight) layout for this camera. */
+  onFocus?: () => void;
 }
 
-export function CameraTile({ camera, defaultQuality, transports, recording, motion }: Props) {
+export function CameraTile({ camera, defaultQuality, transports, recording, motion, talkEnabled, compact, focused, onFocus }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<SentinelVideo | null>(null);
@@ -58,6 +70,9 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
   const [now, setNow] = useState(() => new Date());
   const [flash, setFlash] = useState(false);
   const [drops, setDrops] = useState(0); // times a live stream was lost and re-established
+  const [talk, setTalk] = useState<TalkState>('idle');
+  const [talkError, setTalkError] = useState<string | null>(null);
+  const talkRef = useRef<TalkSession | null>(null);
 
   // ---- player lifecycle -------------------------------------------------------------
   useEffect(() => {
@@ -74,6 +89,7 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
     let lastVideoTime = -1;
     let lastReconnect = Date.now();
     let lastSoftRecover = 0;
+    let reconnectDelay = STALL_RECONNECT_MS;
     let wasLost = false;
     let everLive = false;
     let rvfcHandle = 0;
@@ -148,8 +164,12 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
         if (everLive) wasLost = true;
       }
 
-      if (next !== 'live' && t - lastReconnect > STALL_RECONNECT_MS && (everLive ? sinceFrame : t - startedAt) > STALL_RECONNECT_MS) {
+      // Reconnect with a growing delay (8 s → 16 → 32 → 60 s). Every attempt makes go2rtc ask the
+      // Xiaomi cloud for keys, so an unreachable camera must not be retried every few seconds.
+      if (next === 'live') reconnectDelay = STALL_RECONNECT_MS;
+      else if (t - lastReconnect > reconnectDelay && (everLive ? sinceFrame : t - startedAt) > STALL_RECONNECT_MS) {
         lastReconnect = t;
+        reconnectDelay = Math.min(reconnectDelay * 2, 60_000);
         player.reconnect();
       }
 
@@ -235,6 +255,29 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
     );
   }, [camera.id]);
 
+  // Two-way audio always uses the main stream (the camera session that is already open).
+  const toggleTalk = useCallback(() => {
+    if (talkRef.current) {
+      talkRef.current.stop();
+      talkRef.current = null;
+      return;
+    }
+    setTalkError(null);
+    const session = new TalkSession(camera.stream, (st, err) => {
+      setTalk(st === 'error' ? 'idle' : st);
+      if (st === 'error') setTalkError(err ?? 'שגיאה');
+      if (st === 'idle' || st === 'error') talkRef.current = null;
+    });
+    talkRef.current = session;
+    void session.start();
+  }, [camera.stream]);
+  useEffect(() => () => talkRef.current?.stop(), []);
+  useEffect(() => {
+    if (!talkError) return;
+    const t = window.setTimeout(() => setTalkError(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [talkError]);
+
   const retry = useCallback(() => {
     setError(null);
     playerRef.current?.reconnect();
@@ -243,82 +286,76 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
   // ---- render ------------------------------------------------------------------------
   const LocationIcon = camera.location === 'outdoor' ? Trees : Home;
   const isLive = state === 'live';
+  const canTalk = !!talkEnabled && micAvailable();
+  const talking = talk === 'talking';
 
   return (
     <section
       ref={wrapRef}
+      data-camera={camera.id}
+      data-state={state}
+      data-demo={camera.demo ? 'true' : undefined}
       className={cn(
-        'group relative flex flex-col overflow-hidden rounded-xl border bg-ink-900 animate-fadeIn',
-        isLive ? 'border-ink-600' : 'border-ink-700',
+        'group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-ink-900 transition-colors animate-fadeIn',
+        talking ? 'border-live/70' : motion ? 'border-warn/60' : isLive ? 'border-ink-600' : 'border-ink-700',
         fullscreen && 'rounded-none border-0',
       )}
       aria-label={camera.name}
     >
-      {/* header */}
-      <header className={cn('flex items-center gap-3 border-b border-ink-700 px-4 py-2.5', fullscreen && 'hidden')}>
-        <LocationIcon className="h-4 w-4 shrink-0 text-ink-300" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-ink-100">{camera.name}</h2>
-          <p className="truncate font-mono text-[11px] text-ink-400" dir="ltr">
-            {camera.product || camera.model}
-            {camera.compat === 'unverified' && ' · unverified model'}
-          </p>
-        </div>
-        <div
-          className={cn('shrink-0 text-center leading-tight', drops > 0 ? 'text-warn' : 'text-ink-400')}
-          title="כמה פעמים השידור נפל וחזר מאז שהמסך נפתח"
-        >
-          <div className="font-mono text-sm font-semibold tabular-nums">{drops}</div>
-          <div className="text-[9px]">ניתוקים</div>
-        </div>
-        {motion && (
-          <span className="shrink-0 rounded border border-warn/50 bg-warn/10 px-1.5 py-0.5 text-[10px] font-semibold text-warn" title="זוהתה תנועה עכשיו">
-            תנועה
-          </span>
-        )}
-        {recording && (
-          <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] font-semibold tracking-wider text-red-300" title="מוקלטת עכשיו למחשב" dir="ltr">
-            <span className="h-1.5 w-1.5 rounded-full bg-live" /> REC
-          </span>
-        )}
-        <StateBadge state={state} demo={camera.demo} />
-      </header>
-
       {/* video */}
-      <div className={cn('relative bg-black', fullscreen ? 'flex-1' : 'aspect-video')}>
+      <div className={cn('relative bg-black', fullscreen ? 'min-h-0 flex-1' : 'aspect-video')} onDoubleClick={onFocus}>
         <div ref={hostRef} className="absolute inset-0" />
 
         {camera.demo && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="rounded-md border-2 border-warn/80 bg-black/60 px-4 py-1.5 font-mono text-lg font-bold tracking-[0.3em] text-warn">
+            <span className={cn('rounded-md border-2 border-warn/80 bg-black/60 font-mono font-bold text-warn', compact ? 'px-2 py-0.5 text-[10px] tracking-widest' : 'px-4 py-1.5 text-lg tracking-[0.3em]')}>
               DEMO · NOT A CAMERA
             </span>
           </div>
         )}
 
-        {/* top overlay */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3" dir="ltr">
-          {isLive ? (
-            <span className="flex items-center gap-1.5 rounded bg-black/65 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-white">
+        {/* status chips */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start gap-1.5 p-2.5" dir="ltr">
+          {isLive && (
+            <Chip data-chip="live" className="text-white">
               <span className="h-2 w-2 rounded-full bg-live animate-pulseDot" />
               LIVE
-            </span>
-          ) : (
-            <span />
+            </Chip>
           )}
-          <span className="rounded bg-black/65 px-2 py-0.5 font-mono text-[11px] text-ink-200">
-            {formatTime(now)}
-          </span>
+          {recording && (
+            <Chip data-chip="rec" className="text-red-200" title="מוקלטת עכשיו למחשב">
+              <span className="h-2 w-2 rounded-sm bg-live" />
+              REC
+            </Chip>
+          )}
+          {motion && (
+            <Chip data-chip="motion" className="bg-warn/90 text-black" title="זוהתה תנועה עכשיו">
+              <Activity className="h-3 w-3" />
+              <span dir="rtl">תנועה</span>
+            </Chip>
+          )}
+          <span className="flex-1" />
+          <Chip className="font-normal text-ink-100">{formatTime(now)}</Chip>
         </div>
+
+        {talking && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+            <span className="flex items-center gap-2 rounded-full bg-live px-3 py-1 text-xs font-semibold text-white shadow-lg">
+              <Mic className="h-3.5 w-3.5 animate-pulseDot" /> המיקרופון פתוח — מדברים אל המצלמה
+            </span>
+          </div>
+        )}
 
         {/* connecting / offline overlays */}
         {state === 'connecting' && (
           <Overlay>
             <Loader2 className="h-7 w-7 animate-spin text-signal-glow" aria-hidden />
             <p className="text-sm text-ink-200">מתחבר למצלמה…</p>
-            <p className="max-w-xs text-center text-xs text-ink-400">
-              חיבור Xiaomi דורש קבלת מפתחות מהענן ולחיצת יד P2P מקומית — זה יכול לקחת עד כחצי דקה.
-            </p>
+            {!compact && (
+              <p className="max-w-xs text-center text-xs text-ink-400">
+                חיבור Xiaomi דורש קבלת מפתחות מהענן ולחיצת יד מקומית. זה יכול לקחת עד כחצי דקה.
+              </p>
+            )}
             {error && <ErrorText text={error} />}
           </Overlay>
         )}
@@ -330,13 +367,13 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
         )}
         {state === 'offline' && (
           <Overlay>
-            <WifiOff className="h-7 w-7 text-ink-300" aria-hidden />
+            <WifiOff className="h-7 w-7 text-ink-400" aria-hidden />
             <p className="font-mono text-sm font-semibold tracking-widest text-ink-200">OFFLINE</p>
-            <p className="text-xs text-ink-400">לא מתקבלים פריימים מהמצלמה. מנסה שוב אוטומטית.</p>
-            {error && <ErrorText text={error} />}
+            {!compact && <p className="text-xs text-ink-400">לא מתקבלים פריימים מהמצלמה. מנסה שוב אוטומטית.</p>}
+            {error && !compact && <ErrorText text={error} />}
             <button
               onClick={retry}
-              className="pointer-events-auto mt-1 flex items-center gap-1.5 rounded-md border border-ink-500 px-3 py-1.5 text-xs text-ink-100 hover:border-signal hover:text-white"
+              className="pointer-events-auto mt-1 flex items-center gap-1.5 rounded-lg border border-ink-500 px-3 py-1.5 text-xs text-ink-100 hover:border-signal hover:text-white"
             >
               <RefreshCw className="h-3.5 w-3.5" /> נסה עכשיו
             </button>
@@ -344,84 +381,83 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
         )}
 
         {flash && <div className="pointer-events-none absolute inset-0 bg-white/40" />}
-
-        {/* controls */}
-        <div
-          className={cn(
-            'absolute inset-x-0 bottom-0 flex items-center gap-1 bg-black/70 px-2 py-1.5 transition-opacity duration-200',
-            'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100',
-          )}
-        >
-          <CtrlButton
-            label={!hasAudio ? 'אין ערוץ אודיו בשידור' : muted ? 'הפעל אודיו' : 'השתק'}
-            onClick={toggleMute}
-            disabled={!hasAudio}
-          >
-            {muted || !hasAudio ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </CtrlButton>
-
-          {camera.streamSd && (
-            <div className="mx-1 flex overflow-hidden rounded border border-ink-500 font-mono text-[11px]" role="group" aria-label="איכות שידור" dir="ltr">
-              {(['hd', 'sd'] as const).map((q) => (
-                <button
-                  key={q}
-                  onClick={() => setQuality(q)}
-                  className={cn(
-                    'px-2 py-0.5 uppercase',
-                    effectiveQuality === q ? 'bg-signal text-white' : 'text-ink-200 hover:bg-ink-700',
-                  )}
-                  aria-pressed={effectiveQuality === q}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <span className="flex-1 truncate px-1 text-left font-mono text-[10px] text-ink-300" dir="ltr">
-            {transport !== 'none' && transport.toUpperCase()}
-            {resolution && ` · ${resolution}`}
-
-          </span>
-
-          <CtrlButton label="צילום תמונה" onClick={snapshot} disabled={!isLive}>
-            <CameraIcon className="h-4 w-4" />
-          </CtrlButton>
-          <CtrlButton label="חיבור מחדש" onClick={retry}>
-            <RefreshCw className="h-4 w-4" />
-          </CtrlButton>
-          <CtrlButton label={fullscreen ? 'יציאה ממסך מלא' : 'מסך מלא'} onClick={toggleFullscreen}>
-            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          </CtrlButton>
-        </div>
       </div>
+
+      {/* info + controls: always visible, never hidden behind hover */}
+      <footer className={cn('flex items-center gap-x-1 gap-y-1 border-t border-ink-700/80 bg-ink-900 sm:gap-x-2', compact ? 'px-2.5 py-1.5' : 'flex-wrap px-3 py-2 sm:flex-nowrap')}>
+        <LocationIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden />
+        <div className={cn('min-w-0 flex-1', !compact && 'basis-[calc(100%-2rem)] sm:basis-0')}>
+          <h2 className={cn('truncate font-semibold text-ink-100', compact ? 'text-xs' : 'text-sm')}>{camera.name}</h2>
+          {!compact && (
+            <p className="truncate text-[11px] text-ink-400">
+              <span className="font-mono" dir="ltr">
+                {resolution ?? (camera.product || camera.model)}
+              </span>
+              <span className={cn('ms-2', drops > 0 && 'text-warn')} title="כמה פעמים השידור נפל וחזר מאז שהמסך נפתח" data-drops={drops}>
+                {drops} ניתוקים
+              </span>
+              {camera.compat === 'unverified' && <span className="ms-2">דגם לא מאומת</span>}
+              {talkError && <span className="ms-2 text-red-300">{talkError}</span>}
+            </p>
+          )}
+        </div>
+
+        {!compact && (
+          <>
+            <CtrlButton label={!hasAudio ? 'אין ערוץ אודיו בשידור' : muted ? 'הפעל אודיו' : 'השתק'} onClick={toggleMute} disabled={!hasAudio} active={hasAudio && !muted}>
+              {muted || !hasAudio ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}
+            </CtrlButton>
+
+            {canTalk && (
+              <CtrlButton
+                label={talking ? 'סיים דיבור' : talk === 'starting' ? 'מתחבר למיקרופון…' : 'דבר אל המצלמה'}
+                onClick={toggleTalk}
+                disabled={!isLive && !talking}
+                danger={talking}
+              >
+                {talk === 'starting' ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Mic className="h-[18px] w-[18px]" />}
+              </CtrlButton>
+            )}
+
+            {camera.streamSd && (
+              <div className="mx-0.5 flex overflow-hidden rounded-lg border border-ink-600 font-mono text-[11px]" role="group" aria-label="איכות שידור" dir="ltr">
+                {(['hd', 'sd'] as const).map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => setQuality(q)}
+                    className={cn('px-2 py-1.5 uppercase', effectiveQuality === q ? 'bg-signal text-white' : 'text-ink-300 hover:bg-ink-700')}
+                    aria-pressed={effectiveQuality === q}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <CtrlButton label="צילום תמונה" onClick={snapshot} disabled={!isLive}>
+              <CameraIcon className="h-[18px] w-[18px]" />
+            </CtrlButton>
+            <CtrlButton label="חיבור מחדש" onClick={retry}>
+              <RefreshCw className="h-[18px] w-[18px]" />
+            </CtrlButton>
+          </>
+        )}
+        {onFocus && !fullscreen && (
+          <CtrlButton label={focused ? 'חזרה לתצוגת רשת' : 'מיקוד במצלמה הזו'} onClick={onFocus} active={focused}>
+            {focused ? <LayoutGrid className="h-[18px] w-[18px]" /> : <Scan className="h-[18px] w-[18px]" />}
+          </CtrlButton>
+        )}
+        <CtrlButton label={fullscreen ? 'יציאה ממסך מלא' : 'מסך מלא'} onClick={toggleFullscreen}>
+          {fullscreen ? <Minimize2 className="h-[18px] w-[18px]" /> : <Maximize2 className="h-[18px] w-[18px]" />}
+        </CtrlButton>
+      </footer>
     </section>
   );
 }
 
-function StateBadge({ state, demo }: { state: TileState; demo: boolean }) {
-  if (demo && state === 'live') {
-    return <Badge className="border-warn/50 text-warn">DEMO</Badge>;
-  }
-  switch (state) {
-    case 'live':
-      return (
-        <Badge className="border-live/40 text-red-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-live animate-pulseDot" /> LIVE
-        </Badge>
-      );
-    case 'connecting':
-      return <Badge className="border-signal/40 text-signal-glow">CONNECTING</Badge>;
-    case 'stalled':
-      return <Badge className="border-warn/40 text-warn">RECONNECTING</Badge>;
-    default:
-      return <Badge className="border-ink-500 text-ink-300">OFFLINE</Badge>;
-  }
-}
-
-function Badge({ className, children }: { className?: string; children: React.ReactNode }) {
+function Chip({ className, children, ...rest }: React.HTMLAttributes<HTMLSpanElement>) {
   return (
-    <span className={cn('flex shrink-0 items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wider', className)} dir="ltr">
+    <span className={cn('flex items-center gap-1.5 rounded-md bg-black/65 px-2 py-1 font-mono text-[11px] font-semibold leading-none tracking-wider backdrop-blur-sm', className)} {...rest}>
       {children}
     </span>
   );
@@ -429,7 +465,7 @@ function Badge({ className, children }: { className?: string; children: React.Re
 
 function Overlay({ children, subtle }: { children: React.ReactNode; subtle?: boolean }) {
   return (
-    <div className={cn('pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-6', subtle ? 'bg-black/35' : 'bg-ink-950/85')}>
+    <div className={cn('pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-4', subtle ? 'bg-black/35' : 'bg-ink-950/85')}>
       {children}
     </div>
   );
@@ -447,11 +483,15 @@ function CtrlButton({
   label,
   onClick,
   disabled,
+  active,
+  danger,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  active?: boolean;
+  danger?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -461,7 +501,11 @@ function CtrlButton({
       disabled={disabled}
       title={label}
       aria-label={label}
-      className="rounded p-1.5 text-ink-100 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+      aria-pressed={active || danger || undefined}
+      className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30',
+        danger ? 'bg-live text-white hover:bg-red-500' : active ? 'bg-signal-soft/60 text-signal-glow' : 'text-ink-300 hover:bg-ink-700 hover:text-white',
+      )}
     >
       {children}
     </button>

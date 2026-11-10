@@ -9,7 +9,7 @@ import { recordings } from '../recordings/recorder.js';
 import { motion } from '../motion/service.js';
 import { fixWindowsFirewall, runNetDiag } from '../system/netdiag.js';
 import { go2rtc, Go2rtcError } from '../go2rtc/client.js';
-import { manager } from '../go2rtc/manager.js';
+import { manager, webrtcEnabled } from '../go2rtc/manager.js';
 import {
   SESSION_COOKIE,
   clearLoginFailures,
@@ -84,6 +84,8 @@ export function registerApiRoutes(app: FastifyInstance) {
       },
       /** Which browser transports the player may use. */
       transports: config.go2rtc.webrtc ? 'webrtc,mse,hls' : 'mse,hls',
+      /** Two-way audio is switched on and go2rtc's WebRTC port is up. */
+      talk: getSettings().talk.enabled && webrtcEnabled(),
       demoMode: getSettings().demoMode,
       recording: Object.fromEntries(recordings.status().map((r) => [r.cameraId, r.state])),
       motion: Object.fromEntries(motion.activeMotion().map((m) => [m.camera, m.start])),
@@ -121,6 +123,7 @@ export function registerApiRoutes(app: FastifyInstance) {
         mode: z.enum(['continuous', 'motion']).optional(),
       })
       .optional(),
+    talk: z.object({ enabled: z.boolean() }).optional(),
     motion: z
       .object({
         enabled: z.boolean().optional(),
@@ -161,7 +164,11 @@ export function registerApiRoutes(app: FastifyInstance) {
     if (parsed.data.demoMode !== undefined) next.demoMode = parsed.data.demoMode;
     if (parsed.data.recording) next.recording = { ...cur.recording, ...parsed.data.recording };
     if (parsed.data.motion) next.motion = { ...cur.motion, ...parsed.data.motion };
+    const webrtcBefore = webrtcEnabled();
+    if (parsed.data.talk) next.talk = parsed.data.talk;
     const saved = saveSettings(next);
+    // Two-way audio toggles go2rtc's WebRTC listener: restart go2rtc (streams reconnect by themselves).
+    if (webrtcEnabled() !== webrtcBefore) await manager.restart();
     recordings.reconcile();
     motion.reconcile();
     return saved;

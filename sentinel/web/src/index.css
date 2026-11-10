@@ -38,3 +38,27 @@ section:fullscreen {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Focus (spotlight) layout: the chosen camera takes 3 of 4 columns on wide screens. */
+.focus-main {
+  order: -1;
+}
+@media (min-width: 1024px) {
+  .focus-main {
+    grid-column: span 3 / span 3;
+    grid-row: span var(--rows, 1) / span var(--rows, 1);
+  }
+}
+
+/* Keyboard users always see where they are. */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Thin dark scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b3647 transparent;
+}

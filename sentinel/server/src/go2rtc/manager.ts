@@ -6,6 +6,8 @@ import type { FastifyBaseLogger } from 'fastify';
 import { config, paths } from '../config.js';
 import { redact } from '../security/redact.js';
 import { loadSecrets, writePrivate } from '../security/secrets.js';
+import { getSettings } from '../settings/store.js';
+import { ffmpegPath } from '../system/ffmpeg.js';
 import { go2rtc } from './client.js';
 
 type Logger = Record<'info' | 'warn' | 'error', (msg: string) => void>;
@@ -18,15 +20,28 @@ export type Go2rtcState = 'missing-binary' | 'starting' | 'running' | 'restartin
  * purpose: go2rtc's RTSP server (needed by ffmpeg:/exec {output} sources) stays disabled, because
  * go2rtc skips RTSP authentication for localhost connections.
  */
-const demo = (pattern: string, tone: boolean) =>
-  `exec:ffmpeg -hide_banner -loglevel error -re -f lavfi -i ${pattern}=size=1280x720:rate=15 ` +
-  (tone ? '-f lavfi -i sine=frequency=440:sample_rate=48000 -c:a aac -b:a 64k ' : '') +
-  '-c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -g 30 -pix_fmt yuv420p -f mpegts -';
+const q = (bin: string) => (bin.includes(' ') ? `"${bin}"` : bin);
 
-export const DEMO_STREAMS: Record<string, string> = {
-  sentinel_demo_1: demo('testsrc2', true), // with a 440 Hz test tone to exercise the audio path
-  sentinel_demo_2: demo('smptebars', false),
-};
+function demoStreams(ffmpeg: string): Record<string, string[]> {
+  const demo = (pattern: string, tone: boolean) =>
+    `exec:${q(ffmpeg)} -hide_banner -loglevel error -re -f lavfi -i ${pattern}=size=1280x720:rate=15 ` +
+    (tone ? '-f lavfi -i sine=frequency=440:sample_rate=48000 -c:a aac -b:a 64k ' : '') +
+    '-c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -g 30 -pix_fmt yuv420p -f mpegts -';
+  return {
+    sentinel_demo_1: [
+      demo('testsrc2', true), // with a 440 Hz test tone to exercise the audio path
+      // Talk self-test: whatever is "spoken" to DEMO 1 is written to data/demo-talk.alaw (raw 8 kHz A-law)
+      // (go2rtc exec backchannel, documented in its exec source).
+      `exec:${q(ffmpeg)} -hide_banner -loglevel error -f alaw -ar 8000 -i - -c copy -flush_packets 1 -y -f alaw demo-talk.alaw#backchannel=1#audio=alaw/8000`,
+    ],
+    sentinel_demo_2: [demo('smptebars', false)],
+  };
+}
+
+/** WebRTC port needed: LAN mode (phones) or two-way audio (the microphone travels over WebRTC). */
+export function webrtcEnabled(): boolean {
+  return config.go2rtc.webrtc || getSettings().talk.enabled;
+}
 
 const overridePath = () => path.join(config.dataDir, 'go2rtc.sentinel.yaml');
 
@@ -35,7 +50,7 @@ const overridePath = () => path.join(config.dataDir, 'go2rtc.sentinel.yaml');
  * password never shows up in `ps`) and loaded AFTER data/go2rtc.yaml, so they
  * always win over anything in the user-editable config.
  */
-function writeOverrideConfig(): void {
+function writeOverrideConfig(ffmpeg: string): void {
   const s = loadSecrets();
   const override = {
     api: {
@@ -51,14 +66,14 @@ function writeOverrideConfig(): void {
     rtmp: { listen: '' },
     srtp: { listen: '' },
     webrtc: {
-      // Off in localhost-only mode (see config.ts). Media is only sent to peers that negotiated
+      // Off in localhost-only mode unless two-way audio is enabled (see config.ts). Media is only sent to peers that negotiated
       // through the authenticated API (ICE credentials + DTLS fingerprint from the signalling).
-      listen: config.go2rtc.webrtc ? `:${config.go2rtc.webrtcPort}` : '',
+      listen: webrtcEnabled() ? `:${config.go2rtc.webrtcPort}` : '',
       // No public STUN: media stays inside the home network.
       ice_servers: [],
     },
     log: { format: 'text', level: 'info' },
-    streams: DEMO_STREAMS,
+    streams: demoStreams(ffmpeg),
   };
   // JSON is valid YAML.
   writePrivate(overridePath(), JSON.stringify(override, null, 2));
@@ -124,7 +139,7 @@ class Go2rtcManager {
       return;
     }
     ensureUserConfig();
-    writeOverrideConfig();
+    writeOverrideConfig(await ffmpegPath());
     this.spawnChild();
   }
 

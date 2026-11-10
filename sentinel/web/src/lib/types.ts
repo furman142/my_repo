@@ -31,6 +31,8 @@ export interface SystemStatus {
   time: string;
   go2rtc: { state: string; managed: boolean; version: string | null; lastExit: { code: number | null; at: string } | null };
   transports: string;
+  /** Two-way audio available. */
+  talk: boolean;
   demoMode: boolean;
   /** cameraId -> recorder state */
   recording: Record<string, 'recording' | 'waiting' | 'stopped'>;
@@ -63,6 +65,7 @@ export interface Settings {
   demoMode: boolean;
   recording: RecordingSettings;
   motion: { enabled: boolean; notify: boolean; retentionDays: number };
+  talk: { enabled: boolean };
 }
 
 export interface RecordingSettings {

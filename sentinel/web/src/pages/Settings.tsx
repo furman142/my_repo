@@ -1,6 +1,8 @@
 import {
   Activity,
   ArrowDown,
+  SlidersHorizontal,
+  Video,
   Circle as RecIcon,
   ArrowUp,
   CheckCircle2,
@@ -23,6 +25,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { NetDiagCard, isUdpTimeout } from '../components/NetDiagCard';
 import { PhoneAccessCard } from '../components/PhoneAccessCard';
 import { PageHeader } from '../components/PageHeader';
+import { useLocalPref } from '../hooks/useLocalPref';
 import { api } from '../lib/api';
 import type { Camera, ProbeResult, RecordingStatus, Settings as SettingsT, SetupState, SystemStatus, XiaomiDevice } from '../lib/types';
 import { cn, formatBytes, formatGb } from '../lib/util';
@@ -37,27 +40,64 @@ export function Settings({ status, refresh, loginRequired }: { status: SystemSta
     void reload();
   }, [reload]);
 
+  const [tab, setTab] = useLocalPref<TabId>('settingsTab', 'cameras');
+
   return (
     <>
-      <PageHeader title="הגדרות" subtitle="חיבור מצלמות, שמות, איכות ואבטחה. נשמר מקומית במחשב (sentinel/data)." />
-      <div className="grid max-w-5xl gap-5">
-        <SetupWizard onAdded={reload} />
-        {settings && <CamerasEditor settings={settings} onSaved={reload} />}
-        <NetDiagCard Card={Card} />
-        {settings && <MotionCard settings={settings} onSaved={reload} />}
-        {settings && <RecordingCard settings={settings} onSaved={reload} />}
-        {settings && <Preferences settings={settings} onSaved={reload} />}
-        <PhoneAccessCard Card={Card} />
-        <SecurityCard status={status} loginRequired={loginRequired} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold text-ink-100">הגדרות</h1>
+        <div className="flex max-w-full overflow-x-auto rounded-xl border border-ink-700 bg-ink-900 p-1" role="tablist" aria-label="קטגוריות הגדרות">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={cn('flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors', tab === t.id ? 'bg-signal text-white' : 'text-ink-300 hover:text-white')}
+            >
+              <t.icon className="h-4 w-4" /> {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid max-w-5xl gap-4">
+        {tab === 'cameras' && (
+          <>
+            <SetupWizard onAdded={reload} />
+            {settings && <CamerasEditor settings={settings} onSaved={reload} />}
+            <NetDiagCard Card={Card} />
+          </>
+        )}
+        {tab === 'record' && settings && (
+          <>
+            <MotionCard settings={settings} onSaved={reload} />
+            <RecordingCard settings={settings} onSaved={reload} />
+          </>
+        )}
+        {tab === 'access' && (
+          <>
+            <PhoneAccessCard Card={Card} />
+            <SecurityCard status={status} loginRequired={loginRequired} />
+          </>
+        )}
+        {tab === 'general' && settings && <Preferences settings={settings} onSaved={reload} />}
       </div>
     </>
   );
 }
 
+type TabId = 'cameras' | 'record' | 'access' | 'general';
+const TABS: Array<{ id: TabId; label: string; icon: typeof Video }> = [
+  { id: 'cameras', label: 'מצלמות', icon: Video },
+  { id: 'record', label: 'הקלטה ותנועה', icon: RecIcon },
+  { id: 'access', label: 'גישה ואבטחה', icon: ShieldCheck },
+  { id: 'general', label: 'כללי', icon: SlidersHorizontal },
+];
+
 // ------------------------------------------------------------------------------------------
 function Card({ title, icon, children, aside }: { title: string; icon?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="rounded-xl border border-ink-700 bg-ink-900">
+    <section className="rounded-2xl border border-ink-700 bg-ink-900">
       <header className="flex items-center gap-2.5 border-b border-ink-700 px-5 py-3.5">
         {icon}
         <h2 className="flex-1 font-semibold text-ink-100">{title}</h2>
@@ -100,6 +140,37 @@ function Btn({
 
 /** Running inside the SENTINEL desktop app (Electron). */
 const isDesktopApp = navigator.userAgent.includes('Electron');
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <label className="block min-w-0 space-y-1" title={hint}>
+      <span className="text-[11px] text-ink-400">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Switch-style toggle with a visible label. */
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="space-y-1">
+      <span className="text-[11px] text-ink-400">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={cn('flex h-[34px] w-full items-center gap-2 rounded-lg border px-2.5 text-sm transition-colors', checked ? 'border-signal/50 bg-signal-soft/30 text-ink-100' : 'border-ink-600 text-ink-400')}
+      >
+        <span className={cn('relative h-4 w-7 shrink-0 rounded-full transition-colors', checked ? 'bg-signal' : 'bg-ink-600')}>
+          <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all', checked ? 'start-3.5' : 'start-0.5')} />
+        </span>
+        {checked ? 'פעיל' : 'כבוי'}
+      </button>
+    </div>
+  );
+}
 
 const inputCls = 'rounded-lg border border-ink-600 bg-ink-850 px-3 py-1.5 text-sm text-ink-100 outline-none focus:border-signal';
 
@@ -391,7 +462,7 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
           {rows.map((c, i) => {
             const pr = probes[c.id];
             return (
-              <div key={c.id} className="rounded-lg border border-ink-700 bg-ink-850 p-3">
+              <div key={c.id} className={cn('rounded-xl border bg-ink-850 p-3', c.enabled ? 'border-ink-700' : 'border-ink-800 opacity-70')} data-camera-row={c.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex flex-col">
                     <button onClick={() => move(i, -1)} disabled={i === 0} className="text-ink-400 hover:text-white disabled:opacity-30" aria-label="הזז למעלה">
@@ -401,42 +472,8 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                       <ArrowDown className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <input value={c.name} onChange={(e) => update(i, { name: e.target.value })} maxLength={40} className={cn(inputCls, 'w-52')} aria-label="שם תצוגה" />
-                  <select value={c.location} onChange={(e) => update(i, { location: e.target.value as Camera['location'] })} className={inputCls} aria-label="מיקום">
-                    <option value="indoor">פנימית</option>
-                    <option value="outdoor">חיצונית</option>
-                  </select>
-                  <select
-                    value={c.transport}
-                    onChange={(e) => update(i, { transport: e.target.value as Camera['transport'] })}
-                    className={inputCls}
-                    aria-label="פרוטוקול חיבור"
-                    title="TCP מתקן אובדן חבילות ב-Wi-Fi חלש. אם המצלמה לא תומכת — חזור לאוטומטי."
-                  >
-                    <option value="auto">חיבור: אוטומטי</option>
-                    <option value="tcp">חיבור: TCP (יציב ב-Wi-Fi)</option>
-                  </select>
-                  <select
-                    value={c.motion}
-                    onChange={(e) => update(i, { motion: e.target.value as Camera['motion'] })}
-                    className={inputCls}
-                    aria-label="רגישות זיהוי תנועה"
-                  >
-                    <option value="off">תנועה: כבוי</option>
-                    <option value="low">תנועה: רגישות נמוכה</option>
-                    <option value="medium">תנועה: בינונית</option>
-                    <option value="high">תנועה: גבוהה</option>
-                  </select>
-                  <label className="flex items-center gap-1.5 text-sm text-ink-300" title="התראה כשמתחילה תנועה">
-                    <input type="checkbox" checked={c.alerts} onChange={(e) => update(i, { alerts: e.target.checked })} className="accent-amber-500" /> התראות
-                  </label>
-                  <label className="flex items-center gap-1.5 text-sm text-ink-300" title="כלול את המצלמה בהקלטה הרציפה">
-                    <input type="checkbox" checked={c.record} onChange={(e) => update(i, { record: e.target.checked })} className="accent-red-500" /> מקליטה
-                  </label>
-                  <label className="flex items-center gap-1.5 text-sm text-ink-300">
-                    <input type="checkbox" checked={c.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} className="accent-blue-500" /> מוצגת
-                  </label>
-                  <code className="text-[11px] text-ink-400" dir="ltr">
+                  <input value={c.name} onChange={(e) => update(i, { name: e.target.value })} maxLength={40} className={cn(inputCls, 'min-w-0 flex-1 font-medium sm:max-w-xs')} aria-label="שם תצוגה" />
+                  <code className="hidden text-[11px] text-ink-400 md:block" dir="ltr">
                     {c.model}
                   </code>
                   <div className="flex-1" />
@@ -446,6 +483,31 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                   <Btn variant="danger" onClick={() => remove(c)}>
                     <Trash2 className="h-4 w-4" />
                   </Btn>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-3 xl:grid-cols-6">
+                  <Field label="מיקום">
+                    <select value={c.location} onChange={(e) => update(i, { location: e.target.value as Camera['location'] })} className={cn(inputCls, 'w-full')}>
+                      <option value="indoor">פנימית</option>
+                      <option value="outdoor">חיצונית</option>
+                    </select>
+                  </Field>
+                  <Field label="חיבור" hint="TCP מתקן אובדן חבילות ב-Wi-Fi חלש. אם המצלמה לא תומכת, חזור לאוטומטי.">
+                    <select value={c.transport} onChange={(e) => update(i, { transport: e.target.value as Camera['transport'] })} className={cn(inputCls, 'w-full')}>
+                      <option value="auto">אוטומטי</option>
+                      <option value="tcp">TCP (יציב ב-Wi-Fi)</option>
+                    </select>
+                  </Field>
+                  <Field label="זיהוי תנועה">
+                    <select value={c.motion} onChange={(e) => update(i, { motion: e.target.value as Camera['motion'] })} className={cn(inputCls, 'w-full')}>
+                      <option value="off">כבוי</option>
+                      <option value="low">רגישות נמוכה</option>
+                      <option value="medium">רגישות בינונית</option>
+                      <option value="high">רגישות גבוהה</option>
+                    </select>
+                  </Field>
+                  <Toggle label="מוצגת" checked={c.enabled} onChange={(v) => update(i, { enabled: v })} />
+                  <Toggle label="מקליטה" checked={c.record} onChange={(v) => update(i, { record: v })} />
+                  <Toggle label="התראות" checked={c.alerts} onChange={(v) => update(i, { alerts: v })} />
                 </div>
                 {pr === 'running' && <p className="mt-2 text-xs text-ink-400">מושך 6 שניות של וידאו אמיתי דרך go2rtc… (עד ~40 שניות)</p>}
                 {pr && pr !== 'running' && <ProbeView r={pr} />}
@@ -485,13 +547,13 @@ function ProbeView({ r }: { r: ProbeResult }) {
 
 // ------------------------------------------------------------------------------------------
 function Preferences({ settings, onSaved }: { settings: SettingsT; onSaved: () => void }) {
-  const save = async (patch: Partial<Pick<SettingsT, 'defaultQuality' | 'demoMode'>>) => {
+  const save = async (patch: Partial<Pick<SettingsT, 'defaultQuality' | 'demoMode' | 'talk'>>) => {
     await api('/api/settings', { method: 'PUT', json: patch });
     onSaved();
   };
   return (
-    <Card title="העדפות תצוגה" icon={<FlaskConical className="h-4 w-4 text-signal-glow" />}>
-      <div className="grid gap-5 md:grid-cols-2">
+    <Card title="תצוגה, שמע ובדיקות" icon={<FlaskConical className="h-4 w-4 text-signal-glow" />}>
+      <div className="grid gap-5 md:grid-cols-3">
         <div>
           <div className="mb-1.5 text-sm text-ink-200">איכות ברירת מחדל</div>
           <select value={settings.defaultQuality} onChange={(e) => save({ defaultQuality: e.target.value as 'hd' | 'sd' })} className={inputCls}>
@@ -499,6 +561,15 @@ function Preferences({ settings, onSaved }: { settings: SettingsT; onSaved: () =
             <option value="sd">SD — רוחב פס נמוך</option>
           </select>
           <p className="mt-1.5 text-xs text-ink-400">ב-C200, go2rtc מגדיר HD כ-1080p ו-SD כ-360p. אפשר להחליף לכל מצלמה בנפרד בפקדי התצוגה.</p>
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm text-ink-200">
+            <input type="checkbox" checked={settings.talk.enabled} onChange={(e) => save({ talk: { enabled: e.target.checked } })} className="accent-blue-500" />
+            דיבור דו-כיווני (מיקרופון אל רמקול המצלמה)
+          </label>
+          <p className="mt-1.5 text-xs text-ink-400">
+            מוסיף כפתור מיקרופון לכל מצלמה. הקול עובר ב-WebRTC, ולכן נפתח פורט 8555 של go2rtc ברשת המקומית (רק מי שעבר דרך SENTINEL יכול להשתמש בו). הדיבור עובד מהמחשב הזה בלבד: דפדפנים חוסמים מיקרופון בחיבור HTTP מהטלפון. התמיכה תלויה בדגם המצלמה ולא נבדקה על C200 ו-CW300.
+          </p>
         </div>
         <div>
           <label className="flex items-center gap-2 text-sm text-ink-200">

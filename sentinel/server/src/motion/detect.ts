@@ -65,6 +65,11 @@ export class MotionDetector {
     this.o.sensitivity = s;
   }
 
+  /** Frames that must agree before motion is reported. */
+  setConfirmFrames(n: number) {
+    this.o.confirmFrames = Math.max(1, n);
+  }
+
   /** Coarse grayscale grid from an RGB24 frame. */
   grid(rgb: Uint8Array): Float32Array {
     const { width, cell } = this.o;

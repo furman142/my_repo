@@ -294,8 +294,18 @@ app.on('window-all-closed', () => {
 app.whenReady().then(async () => {
   // Drop pages cached by an older version (updates replace the dashboard files).
   await session.defaultSession.clearCache();
-  // Media/camera/microphone/location etc. are never needed by the dashboard.
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'fullscreen'));
+  // Location, notifications from pages, camera etc. are never needed by the dashboard.
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+    if (permission === 'fullscreen') return cb(true);
+    // Two-way audio: microphone only (never the camera), only for the dashboard window itself.
+    if (permission === 'media') {
+      const types = details.mediaTypes ?? [];
+      const audioOnly = types.length > 0 && types.every((t) => t === 'audio');
+      const ours = !!server && String(details.requestingUrl ?? '').startsWith(server.url) && wc === win?.webContents;
+      return cb(audioOnly && ours);
+    }
+    cb(false);
+  });
   // Snapshots go straight to Pictures/SENTINEL.
   session.defaultSession.on('will-download', (_e, item) => {
     const dir = path.join(app.getPath('pictures'), 'SENTINEL');

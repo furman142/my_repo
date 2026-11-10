@@ -82,7 +82,8 @@ class CameraRecorder {
     if (this.stopped) return;
     this.state = 'waiting';
     this.nextTimer = setTimeout(() => void this.segment(), this.backoffMs);
-    this.backoffMs = Math.min(this.backoffMs * 2, 60_000);
+    // Each attempt costs a Xiaomi cloud request: back off up to 5 minutes for unreachable cameras.
+    this.backoffMs = Math.min(this.backoffMs * 2, 300_000);
   }
 
   /** Record one segment; schedules the following one shortly before this one ends. */

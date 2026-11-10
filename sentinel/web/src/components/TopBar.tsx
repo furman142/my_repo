@@ -23,12 +23,17 @@ export function TopBar({ status, serverError }: { status: SystemStatus | null; s
 
   return (
     <header className="sticky top-0 z-20 border-b border-ink-700 bg-ink-950/90 backdrop-blur">
-      <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
+      <div className="flex h-14 items-center gap-3 px-3 sm:px-5">
         <div className="lg:hidden">
           <Logo compact />
         </div>
+        <div className="hidden leading-none lg:block" dir="ltr">
+          <div className="font-mono text-sm font-bold tracking-[0.32em] text-ink-100">SENTINEL</div>
+          <div className="mt-1 text-[9px] font-medium uppercase tracking-[0.16em] text-ink-400">Security Command Center</div>
+        </div>
+        <span className="hidden h-7 w-px bg-ink-700 lg:block" />
         <div className="hidden min-w-0 sm:block">
-          <div className="font-mono text-xl font-medium tabular-nums tracking-wider text-ink-100" dir="ltr">
+          <div className="font-mono text-lg font-medium tabular-nums tracking-wider text-ink-100" dir="ltr">
             {formatTime(now)}
           </div>
           <div className="truncate text-[11px] text-ink-400">{formatDate(now)}</div>

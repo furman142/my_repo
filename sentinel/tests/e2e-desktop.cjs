@@ -16,7 +16,7 @@ const check = (n, ok, d = '') => console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ?
   const base = new URL(url).origin;
   await win.evaluate(async () => fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ demoMode: true }) }));
   await win.reload();
-  const live = await win.waitForFunction(() => [...document.querySelectorAll('section[aria-label] > header > span:last-child')].filter((b) => b.textContent.trim() === 'DEMO').length >= 2, null, { timeout: 45000 }).then(() => true).catch(() => false);
+  const live = await win.waitForFunction(() => document.querySelectorAll('section[data-camera][data-state="live"]').length >= 2, null, { timeout: 45000 }).then(() => true).catch(() => false);
   await win.waitForTimeout(2500);
   const tiles = await win.evaluate(() => [...document.querySelectorAll('sentinel-video')].map((p) => ({ t: p.transport, res: `${p.video.videoWidth}x${p.video.videoHeight}`, cur: +p.video.currentTime.toFixed(1), audio: p.hasAudioTrack })));
   check('both streams play inside the desktop app', live && tiles.every((x) => x.cur > 1), JSON.stringify(tiles));

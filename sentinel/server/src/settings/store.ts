@@ -47,6 +47,8 @@ export const settingsSchema = z.object({
       mode: z.enum(['continuous', 'motion']).default('continuous'),
     })
     .default({}),
+  /** Two-way audio: talk through the camera's speaker (needs go2rtc's WebRTC port). */
+  talk: z.object({ enabled: z.boolean().default(false) }).default({}),
   motion: z
     .object({
       enabled: z.boolean().default(false),

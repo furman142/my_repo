@@ -29,17 +29,14 @@ const tiles = (page) =>
       h: p.video.videoHeight,
       t: p.video.currentTime,
       audio: p.hasAudioTrack,
-      badge: p.closest('section').querySelector(':scope > header > span:last-child')?.textContent?.trim(),
+      state: p.closest('section').dataset.state,
     })),
   );
 
-const waitBadges = (page, text, n, timeout) =>
+/** Wait until at least n tiles report the given state (data-state is set from real frames). */
+const waitState = (page, state, n, timeout) =>
   page
-    .waitForFunction(
-      ([text, n]) => [...document.querySelectorAll('section[aria-label] > header > span:last-child')].filter((b) => b.textContent.trim() === text).length >= n,
-      [text, n],
-      { timeout },
-    )
+    .waitForFunction(([state, n]) => document.querySelectorAll(`section[data-camera][data-state="${state}"]`).length >= n, [state, n], { timeout })
     .then(() => true)
     .catch(() => false);
 
@@ -55,7 +52,7 @@ const waitBadges = (page, text, n, timeout) =>
 
   await page.goto(BASE + '/');
   const t0 = Date.now();
-  const bothLive = await waitBadges(page, 'DEMO', 2, 45_000);
+  const bothLive = await waitState(page, 'live', 2, 45_000);
   check('two streams render frames simultaneously', bothLive, `${Date.now() - t0} ms`);
   await page.waitForTimeout(2500);
   const a = await tiles(page);
@@ -103,12 +100,12 @@ const waitBadges = (page, text, n, timeout) =>
   if (process.env.KILL_GO2RTC === '1') {
     execSync('pkill -f "bin/go2rt[c]" || true'); // [c] so pkill does not match its own shell
     const wentDown = await page
-      .waitForFunction(() => [...document.querySelectorAll('section[aria-label] > header > span:last-child')].some((b) => /RECONNECTING|OFFLINE|CONNECTING/.test(b.textContent)), null, { timeout: 15_000 })
+      .waitForFunction(() => [...document.querySelectorAll('section[data-camera]')].some((t) => t.dataset.state !== 'live'), null, { timeout: 15_000 })
       .then(() => true)
       .catch(() => false);
     check('tiles stop showing LIVE when the stream dies', wentDown);
     const t1 = Date.now();
-    const back = await waitBadges(page, 'DEMO', 2, 60_000);
+    const back = await waitState(page, 'live', 2, 60_000);
     check('automatic reconnect after go2rtc restart', back, `${Date.now() - t1} ms`);
   }
 
@@ -116,7 +113,7 @@ const waitBadges = (page, text, n, timeout) =>
   const phone = await browser.newContext({ ...devices['iPhone 13'] });
   const p2 = await phone.newPage();
   await p2.goto(BASE + '/');
-  await waitBadges(p2, 'DEMO', 1, 30_000);
+  await waitState(p2, 'live', 1, 30_000);
   await p2.waitForTimeout(1500);
   const overflow = await p2.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check('phone layout has no horizontal overflow', overflow <= 0, `overflow=${overflow}px`);

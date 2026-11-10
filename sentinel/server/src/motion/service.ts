@@ -17,6 +17,7 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import jpeg from 'jpeg-js';
 import { go2rtc } from '../go2rtc/client.js';
+import { ffmpegPath } from '../system/ffmpeg.js';
 import { redact } from '../security/redact.js';
 import { getSettings, type Camera } from '../settings/store.js';
 import { EventTracker, MotionDetector, type Sensitivity } from './detect.js';
@@ -25,19 +26,6 @@ import { enforceEventRetention, newEventId, saveEvent, type MotionEvent } from '
 const W = 320;
 const H = 180;
 const FRAME_BYTES = W * H * 3;
-
-let ffmpegPathCache: string | null = null;
-async function ffmpegPath(): Promise<string> {
-  if (process.env.FFMPEG_BIN) return process.env.FFMPEG_BIN;
-  if (ffmpegPathCache) return ffmpegPathCache;
-  try {
-    const mod = (await import('ffmpeg-static')) as unknown as { default: string | null };
-    if (mod.default) return (ffmpegPathCache = mod.default);
-  } catch {
-    /* not installed */
-  }
-  return (ffmpegPathCache = 'ffmpeg'); // system PATH
-}
 
 export type DetectorState = 'watching' | 'waiting' | 'stopped';
 
@@ -93,6 +81,8 @@ class CameraDetector {
   private detector: MotionDetector;
   private tracker = new EventTracker(8000);
   private peakFrame: Uint8Array | null = null;
+  private lastFrameAt = 0;
+  private frameGapMs = 0;
 
   constructor(
     readonly camera: string,
@@ -101,6 +91,11 @@ class CameraDetector {
     private emit: (type: 'start' | 'end', ev: MotionEvent | ActiveMotion) => void,
   ) {
     this.detector = new MotionDetector({ width: W, height: H, sensitivity });
+  }
+
+  /** Measured seconds between analysed key frames (null until known). */
+  get keyFrameSeconds(): number | null {
+    return this.frameGapMs ? Math.round(this.frameGapMs / 100) / 10 : null;
   }
 
   setSensitivity(s: Sensitivity) {
@@ -126,7 +121,8 @@ class CameraDetector {
     if (this.stopped) return;
     this.state = 'waiting';
     this.timer = setTimeout(() => void this.run(), this.backoffMs);
-    this.backoffMs = Math.min(this.backoffMs * 2, 60_000);
+    // Each attempt costs a Xiaomi cloud request: back off up to 5 minutes for unreachable cameras.
+    this.backoffMs = Math.min(this.backoffMs * 2, 300_000);
   }
 
   private async run() {
@@ -192,6 +188,13 @@ class CameraDetector {
       this.backoffMs = 5000;
     }
     const now = Date.now();
+    // Key frames may be far apart (some cameras: one every 3-4 s). Then a single changed key frame
+    // must be enough, otherwise short motion would be missed.
+    if (this.lastFrameAt) {
+      this.frameGapMs = this.frameGapMs ? this.frameGapMs * 0.8 + (now - this.lastFrameAt) * 0.2 : now - this.lastFrameAt;
+      this.detector.setConfirmFrames(this.frameGapMs > 2500 ? 1 : 2);
+    }
+    this.lastFrameAt = now;
     const r = this.detector.push(rgb);
     const prevPeak = this.tracker.active?.peak ?? -1;
     const what = this.tracker.update(r, now);
@@ -285,7 +288,7 @@ class MotionService extends EventEmitter {
   }
 
   status() {
-    return [...this.detectors.values()].map((d) => ({ camera: d.camera, stream: d.stream, state: d.state, lastError: d.lastError, active: d.active }));
+    return [...this.detectors.values()].map((d) => ({ camera: d.camera, stream: d.stream, state: d.state, lastError: d.lastError, active: d.active, keyFrameSeconds: d.keyFrameSeconds }));
   }
 
   activeMotion(): ActiveMotion[] {

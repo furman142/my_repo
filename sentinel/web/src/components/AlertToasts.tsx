@@ -42,7 +42,7 @@ export function AlertToasts({ navigate }: { navigate: (r: Route) => void }) {
 
   if (!toasts.length) return null;
   return (
-    <div className="fixed bottom-20 start-4 z-40 flex w-72 flex-col gap-2 lg:bottom-6" role="status" aria-live="polite">
+    <div className="fixed bottom-20 end-4 z-40 flex w-72 flex-col gap-2 lg:bottom-6" role="status" aria-live="polite">
       {toasts.map((a) => {
         const d = new Date(a.start);
         return (

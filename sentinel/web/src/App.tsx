@@ -67,11 +67,11 @@ function Shell({ loginRequired }: { loginRequired: boolean }) {
 
   return (
     <div className="min-h-screen">
-      <Sidebar route={route} navigate={navigate} />
+      <Sidebar route={route} navigate={navigate} badges={{ events: !!status && Object.keys(status.motion ?? {}).length > 0 }} />
       <AlertToasts navigate={navigate} />
-      <div className="lg:ps-60">
+      <div className="lg:ps-[84px]">
         <TopBar status={status} serverError={error} />
-        <main className="mx-auto max-w-[1800px] px-4 pb-24 pt-5 sm:px-6 lg:pb-10">
+        <main className="mx-auto max-w-[2200px] px-3 pb-24 pt-3 sm:px-5 lg:pb-8">
           {!status ? (
             <Center>
               {error ? <p className="text-red-300">{error}</p> : <Loader2 className="h-6 w-6 animate-spin text-signal" />}
