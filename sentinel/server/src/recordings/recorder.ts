@@ -189,6 +189,7 @@ interface MotionSource {
 class RecordingService {
   private recorders = new Map<string, CameraRecorder>();
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private midnightTimer: NodeJS.Timeout | null = null;
   private started = false;
   private motionActive = new Set<string>();
   private holdUntil = new Map<string, number>();
@@ -247,10 +248,23 @@ class RecordingService {
     this.reconcile();
     void enforceRetention();
     this.cleanupTimer = setInterval(() => void enforceRetention(), 10 * 60_000);
+    this.scheduleMidnight();
+  }
+
+  /** End-of-day cleanup: one minute after local midnight, every day. */
+  private scheduleMidnight() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 0).getTime();
+    this.midnightTimer = setTimeout(() => {
+      void enforceRetention();
+      this.scheduleMidnight();
+    }, next - now.getTime());
+    this.midnightTimer.unref?.();
   }
 
   async stop() {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    if (this.midnightTimer) clearTimeout(this.midnightTimer);
     await Promise.all([...this.recorders.values()].map((r) => r.stop()));
     this.recorders.clear();
     this.started = false;
@@ -318,11 +332,20 @@ export function listSegments(camera?: string, date?: string): SegmentFile[] {
   return out.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
-/** Delete segments older than retentionDays, then oldest-first until under maxGb. */
+/**
+ * Whole calendar days are kept and deleted together, at the end of the day (local midnight):
+ * with retentionDays = 2, today and yesterday are kept, and when a new day starts the day before
+ * yesterday is deleted in one go. Returns the timestamp before which recordings are deleted.
+ */
+export function retentionCutoff(now: Date, retentionDays: number): number {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - (retentionDays - 1)).getTime();
+}
+
+/** Delete whole days beyond retentionDays, then oldest-first until under maxGb. */
 export async function enforceRetention(): Promise<{ deleted: number }> {
   const { retentionDays, maxGb } = getSettings().recording;
   const all = listSegments().filter((s) => !s.inProgress);
-  const cutoff = Date.now() - retentionDays * 24 * 3600 * 1000;
+  const cutoff = retentionCutoff(new Date(), retentionDays);
   let deleted = 0;
   let total = listSegments().reduce((a, s) => a + s.size, 0);
   const maxBytes = maxGb * 1024 ** 3;

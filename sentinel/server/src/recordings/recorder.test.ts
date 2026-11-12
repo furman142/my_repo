@@ -5,7 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 process.env.GO2RTC_BIN = '/nonexistent';
-const { secondsToBoundary, finalizeSegment } = await import('./recorder.js');
+const { secondsToBoundary, finalizeSegment, retentionCutoff } = await import('./recorder.js');
 
 test('segments end on wall-clock boundaries', () => {
   assert.equal(secondsToBoundary(new Date(2026, 10, 10, 13, 7, 30), 10), 150); // -> 13:10:00
@@ -28,4 +28,15 @@ test('finalize renames with duration, discards empty files', () => {
   writeFileSync(tiny, Buffer.alloc(10));
   assert.equal(finalizeSegment(tiny, new Date()), false);
   assert.equal(existsSync(tiny), false);
+});
+
+test('retention keeps whole calendar days and deletes at the end of the day', () => {
+  const at = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m);
+  // 2 days = today + yesterday. All of the 10th survives the whole of the 11th...
+  assert.ok(at(10, 0, 5).getTime() >= retentionCutoff(at(11, 23, 59), 2));
+  // ...and is deleted as soon as the 12th starts.
+  assert.ok(at(10, 23, 55).getTime() < retentionCutoff(at(12, 0, 1), 2));
+  assert.ok(at(11, 0, 0).getTime() >= retentionCutoff(at(12, 0, 1), 2));
+  // 1 day = today only.
+  assert.ok(at(11, 23, 59).getTime() < retentionCutoff(at(12, 0, 1), 1));
 });
