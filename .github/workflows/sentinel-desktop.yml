@@ -23,6 +23,10 @@ jobs:
           - { os: macos-latest, name: macOS (Apple Silicon), files: "sentinel/desktop/release/*.dmg" }
           - { os: ubuntu-latest, name: Linux, files: "sentinel/desktop/release/*.AppImage" }
     runs-on: ${{ matrix.os }}
+    env:
+      # onnxruntime-node would download ~300 MB of GPU (CUDA) libraries on Linux at install time.
+      # SENTINEL runs on the CPU only, and that download is a needless point of failure.
+      ONNXRUNTIME_NODE_INSTALL: skip
     steps:
       - uses: actions/checkout@v4
 
