@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
 import { requestJump } from '../lib/jump';
+import { LABELS, LABEL_PLURAL, LABEL_STYLE, LABEL_TEXT, type Label } from '../lib/labels';
 import type { Route } from '../lib/router';
 import type { MotionEvent, SystemStatus } from '../lib/types';
 import { cn } from '../lib/util';
@@ -22,6 +23,7 @@ export function Events({ status, navigate }: { status: SystemStatus; navigate: (
   const [days, setDays] = useState<Array<{ date: string; count: number }>>([]);
   const [date, setDate] = useState(today());
   const [camera, setCamera] = useState<string>('all');
+  const [kind, setKind] = useState<'all' | Label | 'none'>('all');
   const [events, setEvents] = useState<MotionEvent[]>([]);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [recDays, setRecDays] = useState<Record<string, string[]>>({});
@@ -49,7 +51,11 @@ export function Events({ status, navigate }: { status: SystemStatus; navigate: (
     return () => window.clearInterval(t);
   }, [load]);
 
-  const shown = camera === 'all' ? events : events.filter((e) => e.camera === camera);
+  const hasLabel = (e: MotionEvent, l: Label) => e.labels?.[l] !== undefined;
+  const isPlain = (e: MotionEvent) => !LABELS.some((l) => hasLabel(e, l));
+  const byCamera = camera === 'all' ? events : events.filter((e) => e.camera === camera);
+  const shown = kind === 'all' ? byCamera : kind === 'none' ? byCamera.filter(isPlain) : byCamera.filter((e) => hasLabel(e, kind));
+  const recognised = events.some((e) => e.labels !== undefined);
   const cams = [...new Set(events.map((e) => e.camera))];
   const activeNow = Object.entries(status.motion ?? {});
 
@@ -62,7 +68,7 @@ export function Events({ status, navigate }: { status: SystemStatus; navigate: (
     <>
       <PageHeader
         title="אירועים"
-        subtitle="תנועה שזוהתה מקומית מתוך הווידאו של המצלמות"
+        subtitle="תנועה, אנשים ורכבים שזוהו מקומית מתוך הווידאו של המצלמות"
         actions={
           <select value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-ink-600 bg-ink-850 px-3 py-1.5 text-sm text-ink-100" aria-label="תאריך">
             {[{ date: today(), count: -1 }, ...days.filter((d) => d.date !== today())].map((d) => (
@@ -111,6 +117,26 @@ export function Events({ status, navigate }: { status: SystemStatus; navigate: (
         </div>
       )}
 
+      {recognised && (
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="סינון לפי סוג">
+          {(['all', ...LABELS, 'none'] as const).map((k) => {
+            const count = k === 'all' ? byCamera.length : k === 'none' ? byCamera.filter(isPlain).length : byCamera.filter((e) => hasLabel(e, k)).length;
+            return (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                aria-pressed={kind === k}
+                data-kind={k}
+                className={cn('flex items-center gap-1.5 rounded-lg border px-3 py-1 text-sm', kind === k ? 'border-signal bg-signal-soft/40 text-white' : 'border-ink-600 text-ink-300 hover:text-white')}
+              >
+                {k !== 'all' && k !== 'none' && <span className={cn('h-2 w-2 rounded-full', LABEL_STYLE[k].dot)} />}
+                {k === 'all' ? 'כל הסוגים' : k === 'none' ? 'תנועה בלבד' : LABEL_PLURAL[k]} <span className="font-mono text-xs text-ink-400">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {shown.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-ink-600 py-14 text-sm text-ink-400">
           <Activity className="h-7 w-7" />
@@ -133,6 +159,13 @@ export function Events({ status, navigate }: { status: SystemStatus; navigate: (
                   <span className="absolute start-2 top-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">
                     {hms(new Date(e.start))}
                   </span>
+                  <div className="absolute end-2 top-2 flex gap-1">
+                    {LABELS.filter((l) => hasLabel(e, l)).map((l) => (
+                      <span key={l} data-label={l} className={cn('rounded border px-1.5 py-0.5 text-[11px] font-semibold backdrop-blur-sm', LABEL_STYLE[l].chip)}>
+                        {LABEL_TEXT[l]}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2">
                   <div className="min-w-0 flex-1">

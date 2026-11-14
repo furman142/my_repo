@@ -21,6 +21,7 @@ import { streamWsUrl } from '../lib/api';
 // Side-effect import registers the <sentinel-video> custom element.
 import '../lib/sentinel-video';
 import type { SentinelVideo, Transport } from '../lib/sentinel-video';
+import { LABEL_TEXT, type Label } from '../lib/labels';
 import { TalkSession, micAvailable, type TalkState } from '../lib/talk';
 import type { CameraStatus, TileState } from '../lib/types';
 import { cn, formatTime } from '../lib/util';
@@ -41,6 +42,8 @@ interface Props {
   recording?: boolean;
   /** Local motion detection reports movement right now. */
   motion?: boolean;
+  /** Most important kind recognised in the current motion (person > vehicle > animal). */
+  motionLabel?: Label | null;
   /** Two-way audio is enabled in Settings. */
   talkEnabled?: boolean;
   /** Small tile (side strip in focus layout): name + essential buttons only. */
@@ -50,7 +53,7 @@ interface Props {
   onFocus?: () => void;
 }
 
-export function CameraTile({ camera, defaultQuality, transports, recording, motion, talkEnabled, compact, focused, onFocus }: Props) {
+export function CameraTile({ camera, defaultQuality, transports, recording, motion, motionLabel, talkEnabled, compact, focused, onFocus }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<SentinelVideo | null>(null);
@@ -297,7 +300,7 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
       data-demo={camera.demo ? 'true' : undefined}
       className={cn(
         'group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-ink-900 transition-colors animate-fadeIn',
-        talking ? 'border-live/70' : motion ? 'border-warn/60' : isLive ? 'border-ink-600' : 'border-ink-700',
+        talking || (motion && motionLabel === 'person') ? 'border-live/70' : motion ? 'border-warn/60' : isLive ? 'border-ink-600' : 'border-ink-700',
         fullscreen && 'rounded-none border-0',
       )}
       aria-label={camera.name}
@@ -328,10 +331,16 @@ export function CameraTile({ camera, defaultQuality, transports, recording, moti
               REC
             </Chip>
           )}
-          {motion && (
+          {motion && !motionLabel && (
             <Chip data-chip="motion" className="bg-warn/90 text-black" title="זוהתה תנועה עכשיו">
               <Activity className="h-3 w-3" />
               <span dir="rtl">תנועה</span>
+            </Chip>
+          )}
+          {motion && motionLabel && (
+            <Chip data-chip={motionLabel} className={motionLabel === 'person' ? 'bg-live text-white' : motionLabel === 'vehicle' ? 'bg-signal text-white' : 'bg-ok text-black'} title="זוהה עכשיו">
+              <Activity className="h-3 w-3" />
+              <span dir="rtl">{LABEL_TEXT[motionLabel]}</span>
             </Chip>
           )}
           <span className="flex-1" />

@@ -415,7 +415,7 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
     try {
       await api('/api/settings', {
         method: 'PUT',
-        json: { cameras: rows.map(({ id, name, location, enabled, transport, record, motion, alerts }) => ({ id, name, location, enabled, transport, record, motion, alerts })) },
+        json: { cameras: rows.map(({ id, name, location, enabled, transport, record, motion, alerts, alertOn }) => ({ id, name, location, enabled, transport, record, motion, alerts, alertOn })) },
       });
       setMsg('נשמר');
       onSaved();
@@ -484,7 +484,7 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                     <Trash2 className="h-4 w-4" />
                   </Btn>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-3 xl:grid-cols-6">
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-4 xl:grid-cols-7">
                   <Field label="מיקום">
                     <select value={c.location} onChange={(e) => update(i, { location: e.target.value as Camera['location'] })} className={cn(inputCls, 'w-full')}>
                       <option value="indoor">פנימית</option>
@@ -508,6 +508,13 @@ function CamerasEditor({ settings, onSaved }: { settings: SettingsT; onSaved: ()
                   <Toggle label="מוצגת" checked={c.enabled} onChange={(v) => update(i, { enabled: v })} />
                   <Toggle label="מקליטה" checked={c.record} onChange={(v) => update(i, { record: v })} />
                   <Toggle label="התראות" checked={c.alerts} onChange={(v) => update(i, { alerts: v })} />
+                  <Field label="התראה על" hint='"אדם או רכב" ו"אדם בלבד" דורשים שזיהוי האנשים והרכבים יהיה מופעל. בלי זה ההתראה היא על כל תנועה.'>
+                    <select value={c.alertOn} onChange={(e) => update(i, { alertOn: e.target.value as Camera['alertOn'] })} disabled={!c.alerts} className={cn(inputCls, 'w-full disabled:opacity-50')}>
+                      <option value="motion">כל תנועה</option>
+                      <option value="objects">אדם או רכב</option>
+                      <option value="person">אדם בלבד</option>
+                    </select>
+                  </Field>
                 </div>
                 {pr === 'running' && <p className="mt-2 text-xs text-ink-400">מושך 6 שניות של וידאו אמיתי דרך go2rtc… (עד ~40 שניות)</p>}
                 {pr && pr !== 'running' && <ProbeView r={pr} />}
@@ -742,7 +749,7 @@ function RecordingCard({ settings, onSaved }: { settings: SettingsT; onSaved: ()
 
 // ------------------------------------------------------------------------------------------
 function MotionCard({ settings, onSaved }: { settings: SettingsT; onSaved: () => void }) {
-  const [st, setSt] = useState<{ enabled: boolean; detectors: Array<{ camera: string; state: string; lastError: string | null; active: unknown }> } | null>(null);
+  const [st, setSt] = useState<{ enabled: boolean; objects?: { enabled: boolean; state: 'off' | 'loading' | 'ready' | 'error'; error: string | null }; detectors: Array<{ camera: string; state: string; lastError: string | null; active: unknown }> } | null>(null);
   const [days, setDays] = useState(settings.motion.retentionDays);
   useEffect(() => setDays(settings.motion.retentionDays), [settings.motion.retentionDays]);
   const load = useCallback(async () => {
@@ -775,6 +782,23 @@ function MotionCard({ settings, onSaved }: { settings: SettingsT; onSaved: () =>
           <p className="text-xs text-ink-400">
             SENTINEL מנתח את פריימי המפתח של כל מצלמה (בערך אחד לשנייה-שתיים), מאותו חיבור שמשמש לצפייה ולהקלטה, בלי חיבור נוסף למצלמה. כל פריים מושווה לרקע, ושינויי תאורה כמו מעבר לראיית לילה מסוננים. צריכת המעבד נמוכה מאוד. הרגישות נקבעת לכל מצלמה ברשימת המצלמות.
           </p>
+          <label className="flex items-center gap-2 text-ink-100">
+            <input type="checkbox" checked={settings.motion.objects} disabled={!settings.motion.enabled} onChange={(e) => save({ objects: e.target.checked })} className="h-4 w-4 accent-red-500" />
+            זיהוי אנשים, רכבים ובעלי חיים
+            {settings.motion.objects && st?.objects && (
+              <span className={cn('rounded border px-1.5 text-[11px]', st.objects.state === 'ready' ? 'border-ok/40 text-ok' : st.objects.state === 'error' ? 'border-live/40 text-red-300' : 'border-ink-600 text-ink-300')} data-objects-state={st.objects.state}>
+                {st.objects.state === 'ready' ? 'פעיל' : st.objects.state === 'error' ? 'שגיאה' : 'נטען…'}
+              </span>
+            )}
+          </label>
+          <p className="text-xs text-ink-400">
+            מודל זיהוי שרץ על המחשב הזה בלבד; התמונות לא נשלחות לשום מקום. הוא רץ רק על פריימים שיש בהם תנועה, ומחשיב רק אובייקט שזז: רכב חונה לא ייספר. אחרי ההפעלה בוחרים לכל מצלמה, בלשונית "מצלמות", על מה להתריע: כל תנועה, אדם או רכב, או אדם בלבד.
+          </p>
+          {settings.motion.objects && st?.objects?.state === 'error' && (
+            <p className="break-all font-mono text-[11px] text-red-300" dir="ltr">
+              {st.objects.error}
+            </p>
+          )}
           <label className="flex items-center gap-2 text-ink-100">
             <input type="checkbox" checked={settings.motion.notify} onChange={(e) => save({ notify: e.target.checked })} className="h-4 w-4 accent-amber-500" />
             התראות כשמתחילה תנועה (התראת מערכת באפליקציה, הודעה בממשק)

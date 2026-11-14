@@ -38,6 +38,8 @@ export interface SystemStatus {
   recording: Record<string, 'recording' | 'waiting' | 'stopped'>;
   /** cameraId -> ISO start of motion happening right now */
   motion: Record<string, string>;
+  /** cameraId -> kinds recognised in the motion happening now */
+  motionLabels?: Record<string, Array<'person' | 'vehicle' | 'animal'>>;
   defaultQuality: 'hd' | 'sd';
   cameras: CameraStatus[];
 }
@@ -56,6 +58,7 @@ export interface Camera {
   record: boolean;
   motion: 'off' | 'low' | 'medium' | 'high';
   alerts: boolean;
+  alertOn: 'motion' | 'objects' | 'person';
 }
 
 export interface Settings {
@@ -64,7 +67,7 @@ export interface Settings {
   defaultQuality: 'hd' | 'sd';
   demoMode: boolean;
   recording: RecordingSettings;
-  motion: { enabled: boolean; notify: boolean; retentionDays: number };
+  motion: { enabled: boolean; objects: boolean; notify: boolean; retentionDays: number };
   talk: { enabled: boolean };
 }
 
@@ -136,6 +139,8 @@ export interface MotionEvent {
   peak: number;
   box: [number, number, number, number] | null;
   thumb: boolean;
+  /** Best score per recognised kind; absent when recognition was off. */
+  labels?: Partial<Record<'person' | 'vehicle' | 'animal', number>>;
 }
 
 export interface Alert {
@@ -144,4 +149,5 @@ export interface Alert {
   camera: string;
   name: string;
   start: string;
+  label?: 'person' | 'vehicle' | 'animal';
 }

@@ -17,6 +17,8 @@ export function registerStatsRoutes(app: FastifyInstance) {
 
     const eventsPerDay = Object.fromEntries(dates.map((d) => [d, 0]));
     const byHour = new Array(24).fill(0);
+    const byLabel = { person: 0, vehicle: 0, animal: 0 };
+    let peopleToday = 0;
     const perCamera: Record<string, { events: number; recordedSeconds: number; lastEvent: string | null; bytes: number }> = {};
     const camRow = (c: string) => (perCamera[c] ??= { events: 0, recordedSeconds: 0, lastEvent: null, bytes: 0 });
 
@@ -29,6 +31,8 @@ export function registerStatsRoutes(app: FastifyInstance) {
         if (cam && e.camera !== cam) continue;
         eventsPerDay[d]++;
         byHour[new Date(e.start).getHours()]++;
+        for (const l of ['person', 'vehicle', 'animal'] as const) if (e.labels?.[l] !== undefined) byLabel[l]++;
+        if (e.labels?.person !== undefined && d === dates[dates.length - 1]) peopleToday++;
       }
     }
 
@@ -51,9 +55,11 @@ export function registerStatsRoutes(app: FastifyInstance) {
       eventsPerDay,
       recordedHoursPerDay: Object.fromEntries(Object.entries(recordedPerDay).map(([d, s]) => [d, Math.round((s / 3600) * 10) / 10])),
       byHour,
+      byLabel,
       perCamera,
       totals: {
         eventsToday: eventsPerDay[today],
+        peopleToday,
         eventsInRange: Object.values(eventsPerDay).reduce((a, b) => a + b, 0),
         recordedHoursToday: Math.round((recordedPerDay[today] / 3600) * 10) / 10,
         storageBytes: totalBytes,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
+import { LABELS, LABEL_PLURAL, LABEL_STYLE } from '../lib/labels';
 import type { SystemStatus } from '../lib/types';
 import { cn, formatGb } from '../lib/util';
 
@@ -9,6 +10,7 @@ interface Stats {
   eventsPerDay: Record<string, number>;
   recordedHoursPerDay: Record<string, number>;
   byHour: number[];
+  byLabel?: { person: number; vehicle: number; animal: number };
   perCamera: Record<string, { events: number; recordedSeconds: number; lastEvent: string | null; bytes: number }>;
   totals: { eventsToday: number; eventsInRange: number; recordedHoursToday: number; storageBytes: number };
 }
@@ -76,6 +78,16 @@ export function Stats({ status }: { status: SystemStatus }) {
           <div className="grid gap-5 xl:grid-cols-2">
             <ChartCard title="אירועי תנועה ליום">
               <Bars days={data.days} values={data.days.map((d) => data.eventsPerDay[d])} unit="אירועים" />
+              {data.byLabel && data.byLabel.person + data.byLabel.vehicle + data.byLabel.animal > 0 && (
+                <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-300" data-testid="by-label">
+                  מתוכם זוהו:
+                  {LABELS.map((l) => (
+                    <span key={l} className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${LABEL_STYLE[l].dot}`} /> {LABEL_PLURAL[l]} <b className="font-mono text-ink-100">{data.byLabel![l]}</b>
+                    </span>
+                  ))}
+                </p>
+              )}
             </ChartCard>
             <ChartCard title="שעות הקלטה ליום">
               <Bars days={data.days} values={data.days.map((d) => data.recordedHoursPerDay[d])} unit="שעות" />

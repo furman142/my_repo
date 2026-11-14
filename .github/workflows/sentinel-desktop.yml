@@ -49,6 +49,12 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist
 
+      # Runs people/vehicle recognition once with exactly the files the installer ships
+      # (bundled server + onnxruntime binaries + model) on this operating system.
+      - name: Object recognition self-test
+        working-directory: sentinel/desktop
+        run: npm run smoke
+
       - uses: actions/upload-artifact@v4
         with:
           name: SENTINEL-${{ runner.os }}

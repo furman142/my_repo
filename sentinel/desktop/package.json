@@ -1,7 +1,7 @@
 {
   "name": "sentinel-desktop",
   "productName": "SENTINEL",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "SENTINEL Security Command Center — desktop app",
   "author": "SENTINEL",
@@ -13,7 +13,8 @@
     "start": "npm run prepare-app && electron .",
     "dev": "electron .",
     "dist": "npm run prepare-app && electron-builder --publish never",
-    "dist:dir": "npm run prepare-app && electron-builder --dir --publish never"
+    "dist:dir": "npm run prepare-app && electron-builder --dir --publish never",
+    "smoke": "node scripts/smoke-detect.mjs"
   },
   "devDependencies": {
     "electron": "44.9.3",
@@ -44,6 +45,10 @@
       {
         "from": "build/bin",
         "to": "bin"
+      },
+      {
+        "from": "build/models",
+        "to": "models"
       }
     ],
     "asar": true,

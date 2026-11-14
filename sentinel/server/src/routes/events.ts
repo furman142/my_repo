@@ -1,7 +1,9 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { eventDays, readEvents, thumbPath, type MotionEvent } from '../motion/events.js';
-import { motion, type ActiveMotion } from '../motion/service.js';
+import { objects } from '../detect/service.js';
+import type { Label } from '../detect/yolox.js';
+import { motion, type ActiveMotion, type ObjectSeen } from '../motion/service.js';
 import { getSettings } from '../settings/store.js';
 
 export interface Alert {
@@ -10,6 +12,8 @@ export interface Alert {
   camera: string;
   name: string;
   start: string;
+  /** What was recognised (absent = plain motion). */
+  label?: Label;
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,15 +33,49 @@ function cameraName(id: string): string {
   return getSettings().cameras.find((c) => c.id === id)?.name ?? id;
 }
 
-motion.on('motion-start', (a: ActiveMotion) => {
-  const s = getSettings();
-  const cam = s.cameras.find((c) => c.id === a.camera);
-  if (!s.motion.notify || (cam && !cam.alerts)) return;
-  const alert: Alert = { seq: ++seq, id: a.id, camera: a.camera, name: cameraName(a.camera), start: a.start };
+function push(a: { id: string; camera: string; start: string }, label?: Label) {
+  const alert: Alert = { seq: ++seq, id: a.id, camera: a.camera, name: cameraName(a.camera), start: a.start, ...(label ? { label } : {}) };
   alerts.push(alert);
   if (alerts.length > 100) alerts.shift();
   for (const fn of listeners) fn(alert);
+}
+
+/**
+ * What triggers an alert for a camera. "objects"/"person" need the recognition model; when it is
+ * off or failed to load they fall back to plain motion, so alerts never silently stop.
+ */
+export function alertPolicy(cameraId: string): 'off' | 'motion' | 'objects' | 'person' {
+  const s = getSettings();
+  if (!s.motion.notify) return 'off';
+  const cam = s.cameras.find((c) => c.id === cameraId);
+  if (cam && !cam.alerts) return 'off';
+  const wanted = cam?.alertOn ?? 'motion';
+  if (wanted !== 'motion' && !(s.motion.objects && objects.ready)) return 'motion';
+  return wanted;
+}
+
+/** Does a recognised object trigger an alert under this policy? ("motion" alerts at motion start instead.) */
+export function alertMatches(policy: ReturnType<typeof alertPolicy>, label: Label): boolean {
+  if (policy === 'person') return label === 'person';
+  if (policy === 'objects') return label === 'person' || label === 'vehicle';
+  return false;
+}
+
+const alerted = new Set<string>(); // event ids that already produced an alert
+
+motion.on('motion-start', (a: ActiveMotion) => {
+  if (alertPolicy(a.camera) !== 'motion') return;
+  alerted.add(a.id);
+  push(a);
 });
+
+motion.on('motion-object', (o: ObjectSeen) => {
+  if (!alertMatches(alertPolicy(o.camera), o.label) || alerted.has(o.id)) return;
+  alerted.add(o.id);
+  push(o, o.label);
+});
+
+motion.on('motion-end', (e: { id: string }) => alerted.delete(e.id));
 
 export function registerEventRoutes(app: FastifyInstance) {
   app.get('/api/events/days', async () => eventDays().map((d) => ({ date: d, count: readEvents(d).length })));
@@ -63,5 +101,9 @@ export function registerEventRoutes(app: FastifyInstance) {
     return { seq, alerts: alerts.filter((a) => a.seq > since) };
   });
 
-  app.get('/api/motion/status', async () => ({ enabled: getSettings().motion.enabled, detectors: motion.status() }));
+  app.get('/api/motion/status', async () => ({
+    enabled: getSettings().motion.enabled,
+    objects: { enabled: getSettings().motion.objects, state: objects.state, error: objects.error },
+    detectors: motion.status(),
+  }));
 }

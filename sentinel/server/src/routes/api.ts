@@ -89,6 +89,8 @@ export function registerApiRoutes(app: FastifyInstance) {
       demoMode: getSettings().demoMode,
       recording: Object.fromEntries(recordings.status().map((r) => [r.cameraId, r.state])),
       motion: Object.fromEntries(motion.activeMotion().map((m) => [m.camera, m.start])),
+      /** cameraId -> kinds recognised in the motion happening now (person / vehicle / animal) */
+      motionLabels: Object.fromEntries(motion.activeMotion().map((m) => [m.camera, m.labels])),
       defaultQuality: getSettings().defaultQuality,
       cameras,
     };
@@ -109,6 +111,7 @@ export function registerApiRoutes(app: FastifyInstance) {
           record: z.boolean().optional(),
           motion: z.enum(['off', 'low', 'medium', 'high']).optional(),
           alerts: z.boolean().optional(),
+          alertOn: z.enum(['motion', 'objects', 'person']).optional(),
         }),
       )
       .optional(),
@@ -127,6 +130,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     motion: z
       .object({
         enabled: z.boolean().optional(),
+        objects: z.boolean().optional(),
         notify: z.boolean().optional(),
         retentionDays: z.number().int().min(1).max(365).optional(),
       })
@@ -155,7 +159,7 @@ export function registerApiRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: `go2rtc דחה את השינוי: ${errMsg(err)}` });
           }
         }
-        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport, record: patch.record ?? existing.record, motion: patch.motion ?? existing.motion, alerts: patch.alerts ?? existing.alerts });
+        reordered.push({ ...existing, name: patch.name, location: patch.location, enabled: patch.enabled, transport, record: patch.record ?? existing.record, motion: patch.motion ?? existing.motion, alerts: patch.alerts ?? existing.alerts, alertOn: patch.alertOn ?? existing.alertOn });
         byId.delete(patch.id);
       }
       next.cameras = [...reordered, ...byId.values()];
@@ -280,6 +284,7 @@ export function registerApiRoutes(app: FastifyInstance) {
       record: true,
       motion: 'medium',
       alerts: true,
+      alertOn: 'motion',
     };
     try {
       await applyStreams(camera, parsed.data.source);

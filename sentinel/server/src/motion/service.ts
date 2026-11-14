@@ -7,7 +7,11 @@
  * P2P session to the camera: Xiaomi cameras accept only a few simultaneous sessions, and a second
  * (SD) session made the main one fail with "read udp … i/o timeout".
  * To stay cheap on a 1080p H.265 stream, ffmpeg decodes key frames only (`-skip_frame nokey`,
- * typically one every 1–2 s) and scales them to 320×180 RGB.
+ * typically one every 1–2 s) and scales them to 640×360 RGB.
+ *
+ * Object recognition (optional): frames that show motion go to a local YOLOX model. Only objects
+ * that actually MOVE count (their box overlaps the changed area), so a parked car does not turn
+ * every rustling leaf into a "vehicle" event.
  *
  * SENTINEL fetches the stream itself and pipes it into ffmpeg, so ffmpeg never sees the go2rtc
  * password (nothing secret on its command line).
@@ -20,11 +24,14 @@ import { go2rtc } from '../go2rtc/client.js';
 import { ffmpegPath } from '../system/ffmpeg.js';
 import { redact } from '../security/redact.js';
 import { getSettings, type Camera } from '../settings/store.js';
-import { EventTracker, MotionDetector, type Sensitivity } from './detect.js';
+import { objects } from '../detect/service.js';
+import type { Detection, Label } from '../detect/yolox.js';
+import { EventTracker, MotionDetector, isMoving, type Sensitivity } from './detect.js';
 import { enforceEventRetention, newEventId, saveEvent, type MotionEvent } from './events.js';
 
-const W = 320;
-const H = 180;
+const W = 640;
+const H = 360;
+const CELL = 8; // 80 × 45 analysis grid
 const FRAME_BYTES = W * H * 3;
 
 export type DetectorState = 'watching' | 'waiting' | 'stopped';
@@ -33,40 +40,60 @@ export interface ActiveMotion {
   id: string;
   camera: string;
   start: string;
+  /** Kinds of moving objects recognised so far in this event. */
+  labels: Label[];
 }
 
-/** Encode an RGB24 frame as JPEG, with the motion box drawn on it. */
-export function thumbnail(rgb: Uint8Array, box: MotionEvent['box']): Buffer {
-  const rgba = Buffer.alloc(W * H * 4);
+/** Emitted once per event and kind, the first time a moving person / vehicle / animal is seen. */
+export interface ObjectSeen {
+  id: string;
+  camera: string;
+  start: string;
+  label: Label;
+  score: number;
+}
+
+type Obj = Pick<Detection, 'label' | 'cls' | 'score' | 'box'>;
+const LABEL_COLOR: Record<Label, [number, number, number]> = { person: [239, 68, 68], vehicle: [59, 130, 246], animal: [34, 197, 94] };
+const MOTION_COLOR: [number, number, number] = [245, 158, 11];
+
+/**
+ * Encode an RGB24 frame as JPEG. Recognised objects are outlined in their colour (person red,
+ * vehicle blue, animal green); without objects the changed area is outlined in amber.
+ */
+export function thumbnail(rgb: Uint8Array, box: MotionEvent['box'], objs: Obj[] = [], w = W, h = H): Buffer {
+  const rgba = Buffer.alloc(w * h * 4);
   for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
     rgba[j] = rgb[i];
     rgba[j + 1] = rgb[i + 1];
     rgba[j + 2] = rgb[i + 2];
     rgba[j + 3] = 255;
   }
-  if (box) {
-    const x0 = Math.max(0, Math.floor(box[0] * W));
-    const y0 = Math.max(0, Math.floor(box[1] * H));
-    const x1 = Math.min(W - 1, Math.ceil((box[0] + box[2]) * W));
-    const y1 = Math.min(H - 1, Math.ceil((box[1] + box[3]) * H));
+  const rect = (b: [number, number, number, number], color: [number, number, number], thick: number) => {
+    const x0 = Math.max(0, Math.floor(b[0] * w));
+    const y0 = Math.max(0, Math.floor(b[1] * h));
+    const x1 = Math.min(w - 1, Math.ceil((b[0] + b[2]) * w));
+    const y1 = Math.min(h - 1, Math.ceil((b[1] + b[3]) * h));
     const px = (x: number, y: number) => {
-      const j = (y * W + x) * 4;
-      rgba[j] = 239;
-      rgba[j + 1] = 68;
-      rgba[j + 2] = 68;
+      const j = (y * w + x) * 4;
+      rgba[j] = color[0];
+      rgba[j + 1] = color[1];
+      rgba[j + 2] = color[2];
     };
-    for (let t = 0; t < 2; t++) {
+    for (let t = 0; t < thick; t++) {
       for (let x = x0; x <= x1; x++) {
-        px(x, Math.min(H - 1, y0 + t));
+        px(x, Math.min(h - 1, y0 + t));
         px(x, Math.max(0, y1 - t));
       }
       for (let y = y0; y <= y1; y++) {
-        px(Math.min(W - 1, x0 + t), y);
+        px(Math.min(w - 1, x0 + t), y);
         px(Math.max(0, x1 - t), y);
       }
     }
-  }
-  return jpeg.encode({ data: rgba, width: W, height: H }, 78).data;
+  };
+  if (objs.length) for (const o of objs) rect(o.box, LABEL_COLOR[o.label], 3);
+  else if (box) rect(box, MOTION_COLOR, 2);
+  return jpeg.encode({ data: rgba, width: w, height: h }, 78).data;
 }
 
 class CameraDetector {
@@ -81,6 +108,11 @@ class CameraDetector {
   private detector: MotionDetector;
   private tracker = new EventTracker(8000);
   private peakFrame: Uint8Array | null = null;
+  /** Best score per recognised kind in the current event. */
+  private labels: Partial<Record<Label, number>> = {};
+  /** Objects on the frame chosen as thumbnail, and how good that choice is. */
+  private thumbObjects: Obj[] = [];
+  private thumbRank = 0;
   private lastFrameAt = 0;
   private frameGapMs = 0;
 
@@ -88,9 +120,9 @@ class CameraDetector {
     readonly camera: string,
     readonly stream: string,
     private sensitivity: Sensitivity,
-    private emit: (type: 'start' | 'end', ev: MotionEvent | ActiveMotion) => void,
+    private emit: (type: 'start' | 'end' | 'object', ev: MotionEvent | ActiveMotion | ObjectSeen) => void,
   ) {
-    this.detector = new MotionDetector({ width: W, height: H, sensitivity });
+    this.detector = new MotionDetector({ width: W, height: H, cell: CELL, sensitivity });
   }
 
   /** Measured seconds between analysed key frames (null until known). */
@@ -200,14 +232,53 @@ class CameraDetector {
     const what = this.tracker.update(r, now);
     if (what === 'start') {
       this.peakFrame = rgb.slice();
+      this.labels = {};
+      this.thumbObjects = [];
+      this.thumbRank = 0;
       const start = new Date(now);
-      this.active = { id: newEventId(this.camera, start), camera: this.camera, start: start.toISOString() };
+      this.active = { id: newEventId(this.camera, start), camera: this.camera, start: start.toISOString(), labels: [] };
       this.emit('start', this.active);
-    } else if (this.tracker.active && this.tracker.active.peak > prevPeak && now - this.tracker.active.start < 4000) {
-      this.peakFrame = rgb.slice(); // best thumbnail within the first seconds
+    } else if (this.tracker.active && this.thumbRank === 0 && this.tracker.active.peak > prevPeak && now - this.tracker.active.start < 4000) {
+      this.peakFrame = rgb.slice(); // best thumbnail within the first seconds (until an object is found)
     } else if (what === 'end') {
       this.finishEvent(now);
+      return;
     }
+    if (this.active && r.motion && r.mask) this.recognise(rgb, r.mask, r.gw!, r.gh!, this.active);
+  }
+
+  /** Run the object model on a motion frame (skipped while the model is busy with another frame). */
+  private recognise(rgb: Uint8Array, mask: Uint8Array, gw: number, gh: number, event: ActiveMotion) {
+    if (!getSettings().motion.objects) return;
+    const det = objects.idle;
+    if (!det) return;
+    const frame = rgb.slice();
+    det
+      .detect(frame, W, H)
+      .then((found) => {
+        if (this.active !== event) return; // the event ended meanwhile
+        const moving = found.filter((d) => isMoving(mask, gw, gh, d.box));
+        if (!moving.length) return;
+        for (const d of moving) {
+          const first = this.labels[d.label] === undefined;
+          if (first || d.score > this.labels[d.label]!) this.labels[d.label] = d.score;
+          if (first) {
+            event.labels.push(d.label);
+            this.emit('object', { id: event.id, camera: this.camera, start: event.start, label: d.label, score: d.score });
+          }
+        }
+        // Thumbnail: a frame with a person beats one with a vehicle, which beats one with an animal.
+        const weight = { person: 3, vehicle: 2, animal: 1 } as const;
+        const rank = Math.max(...moving.map((d) => weight[d.label] + d.score));
+        if (rank > this.thumbRank) {
+          this.thumbRank = rank;
+          this.peakFrame = frame;
+          this.thumbObjects = moving.map(({ label, cls, score, box }) => ({ label, cls, score, box }));
+        }
+      })
+      .catch(() => {
+        /* a failed inference never stops motion detection */
+      });
   }
 
   private finishEvent(now: number) {
@@ -224,13 +295,19 @@ class CameraDetector {
       peak: Math.round(a.peak * 10000) / 10000,
       box: a.box,
       thumb: !!this.peakFrame,
+      // labels is present (possibly empty) only when recognition actually ran for this event
+      ...(getSettings().motion.objects && objects.ready ? { labels: this.labels } : {}),
+      ...(this.thumbObjects.length ? { objects: this.thumbObjects } : {}),
     };
     try {
-      saveEvent(ev, this.peakFrame ? thumbnail(this.peakFrame, a.box) : undefined);
+      saveEvent(ev, this.peakFrame ? thumbnail(this.peakFrame, a.box, this.thumbObjects) : undefined);
     } catch {
       /* disk full etc. — keep detecting */
     }
     this.peakFrame = null;
+    this.labels = {};
+    this.thumbObjects = [];
+    this.thumbRank = 0;
     this.active = null;
     this.emit('end', ev);
     void now;
@@ -249,6 +326,8 @@ class MotionService extends EventEmitter {
 
   reconcile() {
     const s = getSettings();
+    if (s.motion.enabled && s.motion.objects) objects.ensure();
+    else objects.disable();
     const wanted = new Map<string, { stream: string; sens: Sensitivity }>();
     if (s.motion.enabled) {
       for (const c of s.cameras) {
@@ -268,7 +347,7 @@ class MotionService extends EventEmitter {
     }
     for (const [id, w] of wanted) {
       if (this.detectors.has(id)) continue;
-      const d = new CameraDetector(id, w.stream, w.sens, (type, ev) => this.emit(type === 'start' ? 'motion-start' : 'motion-end', ev));
+      const d = new CameraDetector(id, w.stream, w.sens, (type, ev) => this.emit(type === 'start' ? 'motion-start' : type === 'object' ? 'motion-object' : 'motion-end', ev));
       this.detectors.set(id, d);
       d.start();
     }

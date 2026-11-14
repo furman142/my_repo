@@ -104,6 +104,7 @@ async function startBackend() {
   process.env.SENTINEL_RECORDINGS_DIR = path.join(app.getPath('videos'), 'SENTINEL');
   process.env.GO2RTC_BIN = path.join(RES, 'bin', process.platform === 'win32' ? 'go2rtc.exe' : 'go2rtc');
   process.env.FFMPEG_BIN = path.join(RES, 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+  process.env.SENTINEL_MODEL = path.join(RES, 'models', 'yolox_tiny.onnx');
 
   const mod = await import(pathToFileURL(path.join(RES, 'server', 'server.mjs')).href);
   return mod.startServer({
@@ -340,7 +341,8 @@ app.whenReady().then(async () => {
     if (now - (lastByCamera.get(a.camera) ?? 0) < 60_000) return;
     lastByCamera.set(a.camera, now);
     const t = new Date(a.start).toLocaleTimeString('he-IL', { hour12: false });
-    const n = new Notification({ title: `תנועה: ${a.name}`, body: `זוהתה תנועה ב-${t}`, icon: path.join(ASSETS, 'icon.png') });
+    const what = { person: 'אדם זוהה', vehicle: 'רכב זוהה', animal: 'בעל חיים זוהה' }[a.label] ?? 'תנועה';
+    const n = new Notification({ title: `${what}: ${a.name}`, body: `${what} ב-${t}`, icon: path.join(ASSETS, 'icon.png') });
     n.on('click', () => {
       if (win?.isVisible()) {
         win.loadURL(server.url + '/events');

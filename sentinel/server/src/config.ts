@@ -81,6 +81,8 @@ export const config = {
   envFile: ENV_FILE,
   dataDir: DATA_DIR,
   webDist: process.env.SENTINEL_WEB_DIST || path.join(ROOT, 'web', 'dist'),
+  /** Object-detection model (people / vehicles). Installed by scripts/install-model.mjs. */
+  model: process.env.SENTINEL_MODEL || path.join(ROOT, 'models', 'yolox_tiny.onnx'),
   go2rtc: {
     bin: process.env.GO2RTC_BIN || path.join(ROOT, 'bin', binName),
     apiPort: int('GO2RTC_API_PORT', 1984),

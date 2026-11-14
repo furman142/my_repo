@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { EventTracker, MotionDetector } from './detect.js';
+import { EventTracker, MotionDetector, isMoving } from './detect.js';
 
 const W = 320;
 const H = 180;
@@ -87,4 +87,18 @@ test('very long activity is split into separate events', () => {
   assert.equal(t.update(m, 60_000), 'end');
   t.close();
   assert.equal(t.update(m, 60_500), 'start');
+});
+
+test('a parked object is not "moving", a walking one is', () => {
+  const d = new MotionDetector({ width: W, height: H });
+  for (let i = 0; i < 10; i++) d.push(frame(80));
+  d.push(frame(80, { square: [100, 60, 40] }));
+  const r = d.push(frame(80, { square: [104, 60, 40] }));
+  assert.ok(r.mask && r.gw && r.gh);
+  // box around the moving square
+  assert.equal(isMoving(r.mask!, r.gw!, r.gh!, [100 / W, 60 / H, 44 / W, 40 / H]), true);
+  // a "parked car" elsewhere in the picture
+  assert.equal(isMoving(r.mask!, r.gw!, r.gh!, [0.6, 0.6, 0.3, 0.3]), false);
+  // a huge box that merely contains the small moving thing (e.g. a bus behind a walking cat)
+  assert.equal(isMoving(r.mask!, r.gw!, r.gh!, [0, 0, 1, 1]), false);
 });

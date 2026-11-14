@@ -23,8 +23,11 @@ export type Go2rtcState = 'missing-binary' | 'starting' | 'running' | 'restartin
 const q = (bin: string) => (bin.includes(' ') ? `"${bin}"` : bin);
 
 function demoStreams(ffmpeg: string): Record<string, string[]> {
+  // SENTINEL_TEST_DEMO1_INPUT: tests only — replaces DEMO 1's test pattern with other ffmpeg input
+  // arguments (e.g. a looping video file) to exercise object recognition end to end.
+  const testInput = process.env.SENTINEL_TEST_DEMO1_INPUT;
   const demo = (pattern: string, tone: boolean) =>
-    `exec:${q(ffmpeg)} -hide_banner -loglevel error -re -f lavfi -i ${pattern}=size=1280x720:rate=15 ` +
+    `exec:${q(ffmpeg)} -hide_banner -loglevel error -re ${tone && testInput ? testInput : `-f lavfi -i ${pattern}=size=1280x720:rate=15`} ` +
     (tone ? '-f lavfi -i sine=frequency=440:sample_rate=48000 -c:a aac -b:a 64k ' : '') +
     '-c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -g 30 -pix_fmt yuv420p -f mpegts -';
   return {

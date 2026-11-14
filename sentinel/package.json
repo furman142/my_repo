@@ -4,10 +4,15 @@
   "private": true,
   "description": "SENTINEL — personal Security Command Center for Xiaomi cameras (via go2rtc)",
   "license": "MIT",
-  "workspaces": ["server", "web"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "setup": "npm install && node scripts/install-go2rtc.mjs && npm run build",
+    "setup": "npm install && node scripts/install-go2rtc.mjs && node scripts/install-model.mjs && npm run build",
     "install:go2rtc": "node scripts/install-go2rtc.mjs",
     "build": "npm run build -w web && npm run build -w server",
     "start": "node server/dist/index.js",
@@ -17,6 +22,7 @@
     "autostart:install": "node scripts/autostart.mjs install",
     "autostart:remove": "node scripts/autostart.mjs remove",
     "test": "npm test -w server && npm run typecheck -w web",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "install:model": "node scripts/install-model.mjs"
   }
 }

@@ -7,6 +7,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import type { Detection, Label } from '../detect/yolox.js';
 import { localDate } from '../recordings/recorder.js';
 
 export interface MotionEvent {
@@ -17,6 +18,10 @@ export interface MotionEvent {
   peak: number; // max changed-area ratio (0..1)
   box: [number, number, number, number] | null; // normalized bounding box at peak
   thumb: boolean;
+  /** Moving objects recognised during the event: best score per kind (absent = recognition off). */
+  labels?: Partial<Record<Label, number>>;
+  /** Objects on the thumbnail frame. */
+  objects?: Array<Pick<Detection, 'label' | 'cls' | 'score' | 'box'>>;
 }
 
 export const EVENTS_DIR = () => path.join(config.dataDir, 'events');

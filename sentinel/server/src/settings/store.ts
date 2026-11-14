@@ -29,6 +29,11 @@ export const cameraSchema = z.object({
   motion: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
   /** Show an alert (desktop notification / in-app) when motion starts. */
   alerts: z.boolean().default(true),
+  /**
+   * What triggers an alert: any motion, a person or vehicle, or a person only. The last two need
+   * object detection (motion.objects); without it they fall back to any motion.
+   */
+  alertOn: z.enum(['motion', 'objects', 'person']).default('motion'),
 });
 
 export const settingsSchema = z.object({
@@ -52,6 +57,8 @@ export const settingsSchema = z.object({
   motion: z
     .object({
       enabled: z.boolean().default(false),
+      /** Recognise people, vehicles and animals in motion events (local model). */
+      objects: z.boolean().default(false),
       notify: z.boolean().default(true),
       retentionDays: z.number().int().min(1).max(365).default(30),
     })

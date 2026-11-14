@@ -1,6 +1,7 @@
 import { ArrowLeft, CameraOff } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useLocalPref } from '../hooks/useLocalPref';
+import { topLabel } from '../lib/labels';
 import type { Route } from '../lib/router';
 import type { SystemStatus } from '../lib/types';
 import { cn } from '../lib/util';
@@ -54,6 +55,7 @@ export function CameraGrid({ status, columns = 2, navigate }: { status: SystemSt
                 transports={status.transports}
                 recording={status.recording?.[c.id] === 'recording'}
                 motion={!!status.motion?.[c.id]}
+                motionLabel={topLabel(status.motionLabels?.[c.id])}
                 talkEnabled={status.talk}
                 compact={!!focus && !isFocus}
                 focused={isFocus}

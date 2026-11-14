@@ -127,3 +127,17 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     },
   };
 }
+
+/**
+ * Self-test of object recognition with the files this build ships: loads the runtime and the
+ * model and runs one frame. Used by the installer builds to prove it works on each OS.
+ */
+export async function selfTestObjects(): Promise<{ ok: true; ms: number; detections: number }> {
+  const { ObjectDetector } = await import('./detect/yolox.js');
+  const det = await ObjectDetector.load(config.model);
+  const frame = new Uint8Array(640 * 360 * 3).fill(110);
+  await det.detect(frame, 640, 360);
+  const t = Date.now();
+  const found = await det.detect(frame, 640, 360);
+  return { ok: true, ms: Date.now() - t, detections: found.length };
+}

@@ -38,7 +38,8 @@ await build({
   // CommonJS dependencies (fastify, ws, …) call require(); give the ESM bundle one.
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   // Optional native speed-ups of `ws`; it falls back to JS when they are missing.
-  external: ['bufferutil', 'utf-8-validate', 'ffmpeg-static'],
+  // onnxruntime-node is a native addon: it cannot be bundled, it is copied next to the bundle below.
+  external: ['bufferutil', 'utf-8-validate', 'ffmpeg-static', 'onnxruntime-node'],
   logLevel: 'warning',
   legalComments: 'linked',
 });
@@ -52,4 +53,24 @@ if (!ffmpegSrc || !existsSync(ffmpegSrc)) throw new Error('ffmpeg-static binary 
 const ffmpegDst = path.join(OUT, 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 copyFileSync(ffmpegSrc, ffmpegDst);
 chmodSync(ffmpegDst, 0o755);
+console.log('• object detection (onnxruntime + model)…');
+// Node resolves `onnxruntime-node` from build/server/node_modules, right beside server.mjs.
+const NM = path.join(OUT, 'server', 'node_modules');
+rmSync(NM, { recursive: true, force: true });
+cpSync(path.join(SENTINEL, 'node_modules', 'onnxruntime-common'), path.join(NM, 'onnxruntime-common'), { recursive: true });
+const ortSrc = path.join(SENTINEL, 'node_modules', 'onnxruntime-node');
+const keepBin = path.join('bin', 'napi-v6', process.platform, process.arch);
+if (!existsSync(path.join(ortSrc, keepBin))) throw new Error(`onnxruntime-node has no binaries for ${process.platform}/${process.arch}`);
+cpSync(ortSrc, path.join(NM, 'onnxruntime-node'), {
+  recursive: true,
+  filter: (src) => {
+    const rel = path.relative(ortSrc, src);
+    if (rel === 'script' || rel.startsWith('script' + path.sep)) return false; // install-time only
+    // Only this platform's binaries, and no GPU providers (hundreds of MB, never used: CPU only).
+    if (rel.startsWith('bin' + path.sep) && rel.length >= keepBin.length && !rel.startsWith(keepBin)) return false;
+    if (/providers_(cuda|tensorrt)/.test(rel)) return false;
+    return true;
+  },
+});
+execSync(`node "${path.join(SENTINEL, 'scripts', 'install-model.mjs')}" --out "${path.join(OUT, 'models')}"`, { stdio: 'inherit' });
 console.log('✔ desktop/build ready');

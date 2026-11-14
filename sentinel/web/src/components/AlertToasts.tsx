@@ -1,6 +1,7 @@
 import { Activity, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { LABEL_TEXT } from '../lib/labels';
 import type { Route } from '../lib/router';
 import type { Alert } from '../lib/types';
 
@@ -46,10 +47,12 @@ export function AlertToasts({ navigate }: { navigate: (r: Route) => void }) {
       {toasts.map((a) => {
         const d = new Date(a.start);
         return (
-          <div key={a.seq} className="flex items-start gap-3 rounded-xl border border-warn/40 bg-ink-900/95 p-3 shadow-lg backdrop-blur animate-fadeIn">
+          <div key={a.seq} data-alert={a.label ?? "motion"} className={`flex items-start gap-3 rounded-xl border bg-ink-900/95 p-3 shadow-lg backdrop-blur animate-fadeIn ${a.label === "person" ? "border-live/60" : "border-warn/40"}`}>
             <Activity className="mt-0.5 h-5 w-5 shrink-0 text-warn" />
             <button className="min-w-0 flex-1 text-start" onClick={() => navigate('events')}>
-              <div className="text-sm font-medium text-ink-100">תנועה: {a.name}</div>
+              <div className="text-sm font-medium text-ink-100">
+                {a.label ? `${LABEL_TEXT[a.label]} זוהה` : 'תנועה'}: {a.name}
+              </div>
               <div className="font-mono text-[11px] text-ink-400" dir="ltr">
                 {pad(d.getHours())}:{pad(d.getMinutes())}:{pad(d.getSeconds())}
               </div>

@@ -8,3 +8,6 @@ bin/*
 !bin/.gitkeep
 .env
 *.log
+# Downloaded object-detection model
+models/*
+!models/.gitkeep

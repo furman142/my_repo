@@ -36,6 +36,37 @@ export interface FrameResult {
   motion: boolean; // confirmed motion on this frame
   lighting: boolean; // frame classified as lighting change
   box: [number, number, number, number] | null; // normalized x, y, w, h of changed cells
+  /** Changed cells of this frame (gw × gh, 1 = changed). Used to tell moving objects from parked ones. */
+  mask?: Uint8Array;
+  gw?: number;
+  gh?: number;
+}
+
+/**
+ * Share of an object's box that changed in this frame. A person walking through the picture
+ * changes most of their box; a parked car that merely sits where leaves or shadows move changes
+ * little or nothing.
+ */
+export function changedShare(mask: Uint8Array, gw: number, gh: number, box: [number, number, number, number]): { share: number; cells: number } {
+  const x0 = Math.max(0, Math.floor(box[0] * gw));
+  const y0 = Math.max(0, Math.floor(box[1] * gh));
+  const x1 = Math.min(gw - 1, Math.ceil((box[0] + box[2]) * gw) - 1);
+  const y1 = Math.min(gh - 1, Math.ceil((box[1] + box[3]) * gh) - 1);
+  let changed = 0;
+  let total = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      total++;
+      if (mask[y * gw + x]) changed++;
+    }
+  }
+  return { share: total ? changed / total : 0, cells: changed };
+}
+
+/** An object counts as moving when a meaningful part of its box changed. */
+export function isMoving(mask: Uint8Array, gw: number, gh: number, box: [number, number, number, number]): boolean {
+  const { share, cells } = changedShare(mask, gw, gh, box);
+  return cells >= 2 && share >= 0.12;
 }
 
 export class MotionDetector {
@@ -97,12 +128,14 @@ export class MotionDetector {
     }
 
     let changed = 0;
+    const mask = new Uint8Array(g.length);
     let minX = this.gw, minY = this.gh, maxX = -1, maxY = -1;
     for (let y = 0; y < this.gh; y++) {
       for (let x = 0; x < this.gw; x++) {
         const k = y * this.gw + x;
         if (Math.abs(g[k] - this.bg[k]) > this.o.cellThreshold) {
           changed++;
+          mask[k] = 1;
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
           if (y < minY) minY = y;
@@ -125,7 +158,7 @@ export class MotionDetector {
     this.bg = blend(this.bg, g, over ? this.o.bgAlpha / 10 : this.o.bgAlpha);
     const box: FrameResult['box'] =
       changed > 0 ? [minX / this.gw, minY / this.gh, (maxX - minX + 1) / this.gw, (maxY - minY + 1) / this.gh] : null;
-    return { ratio, motion, lighting: false, box };
+    return { ratio, motion, lighting: false, box, mask, gw: this.gw, gh: this.gh };
   }
 }
 

@@ -194,7 +194,7 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
           {events.map((e) => (
             <div
               key={e.id}
-              className="pointer-events-none absolute top-0 h-1.5 w-1 rounded-b bg-warn"
+              className={cn('pointer-events-none absolute top-0 h-1.5 w-1 rounded-b', e.labels?.person !== undefined ? 'bg-live' : e.labels?.vehicle !== undefined ? 'bg-signal' : 'bg-warn')}
               style={{ left: `${(secOfDay(new Date(e.start)) / DAY_S) * 100}%` }}
               title={`תנועה ${hms(new Date(e.start))}`}
             />
@@ -291,7 +291,7 @@ export function Recordings({ status, navigate }: { status: SystemStatus; navigat
             ))}
         </div>
       </div>
-      <p className="mt-3 text-xs text-ink-400"><span className="inline-block h-2 w-1 rounded-b bg-warn align-middle" /> סימון כתום בראש ציר הזמן = אירוע תנועה. ההקלטות כוללות וידאו בלבד: go2rtc שומר MP4 עם H.264/H.265 ו-AAC, ואודיו Opus של מצלמות Xiaomi לא נשמר.</p>
+      <p className="mt-3 text-xs text-ink-400"><span className="inline-block h-2 w-1 rounded-b bg-warn align-middle" /> סימון בראש ציר הזמן = אירוע: אדום אדם, כחול רכב, כתום תנועה אחרת. ההקלטות כוללות וידאו בלבד: go2rtc שומר MP4 עם H.264/H.265 ו-AAC, ואודיו Opus של מצלמות Xiaomi לא נשמר.</p>
     </>
   );
 }
